@@ -1,0 +1,81 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: sidefiller-db
+    environment:
+      POSTGRES_USER: sidefiller
+      POSTGRES_PASSWORD: sidefiller_secret
+      POSTGRES_DB: sidefiller
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sidefiller"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sidefiller-network
+
+  # Express.js Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sidefiller-backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://sidefiller:sidefiller_secret@postgres:5432/sidefiller
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    networks:
+      - sidefiller-network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sidefiller-frontend
+    environment:
+      VITE_API_URL: http://localhost:8080/api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend
+    networks:
+      - sidefiller-network
+
+  # Nginx API Gateway
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: sidefiller-gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - sidefiller-network
+
+volumes:
+  postgres_data:
+
+networks:
+  sidefiller-network:
+    driver: bridge
+
