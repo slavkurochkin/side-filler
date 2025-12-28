@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, Mail, Phone, FileText, Plus, ChevronDown, ChevronRight,
   Briefcase, GraduationCap, FolderKanban, Sparkles, Edit3, Trash2, Save, X,
-  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp
+  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp, Loader2
 } from 'lucide-react'
 import { Resume, Section, Entry } from '../types'
 
@@ -11,6 +11,7 @@ interface ResumePanelProps {
   resume: Resume | null
   onUpdate: (id: string) => void
   apiUrl: string
+  jobDescription?: string | null
 }
 
 const sectionIcons: Record<string, typeof Briefcase> = {
@@ -21,7 +22,7 @@ const sectionIcons: Record<string, typeof Briefcase> = {
   custom: FileText
 }
 
-export function ResumePanel({ resume, onUpdate, apiUrl }: ResumePanelProps) {
+export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: ResumePanelProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -318,6 +319,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl }: ResumePanelProps) {
               onUpdate={() => onUpdate(resume.id)}
               apiUrl={apiUrl}
               formatDate={formatDate}
+              jobDescription={jobDescription}
             />
           ))}
         </AnimatePresence>
@@ -630,6 +632,7 @@ interface SectionCardProps {
   onUpdate: () => void
   apiUrl: string
   formatDate: (date?: string) => string
+  jobDescription?: string | null
 }
 
 function SectionCard({ 
@@ -640,7 +643,8 @@ function SectionCard({
   onDelete,
   onUpdate,
   apiUrl,
-  formatDate 
+  formatDate,
+  jobDescription
 }: SectionCardProps) {
   const Icon = sectionIcons[section.section_type] || FileText
 
@@ -684,6 +688,7 @@ function SectionCard({
                 onUpdate={onUpdate}
                 apiUrl={apiUrl}
                 formatDate={formatDate}
+                jobDescription={section.section_type === 'experience' ? jobDescription : null}
               />
             ))}
             
@@ -809,13 +814,18 @@ interface EntryCardProps {
   onUpdate: () => void
   apiUrl: string
   formatDate: (date?: string) => string
+  jobDescription?: string | null
 }
 
-function EntryCard({ entry, onUpdate, apiUrl, formatDate }: EntryCardProps) {
+function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: EntryCardProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState(entry)
   const [newBullet, setNewBullet] = useState('')
   const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [suggestedBullets, setSuggestedBullets] = useState<string[]>([])
+  const [isLoadingAI, setIsLoadingAI] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const copyField = async (field: string, text: string) => {
     try {
@@ -914,6 +924,97 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate }: EntryCardProps) {
     } catch (error) {
       console.error('Failed to delete bullet:', error)
     }
+  }
+
+  const adjustWithAI = async () => {
+    if (!jobDescription || !entry.bullets || entry.bullets.length === 0) {
+      return
+    }
+
+    setIsLoadingAI(true)
+    setAiError(null)
+    setShowAIModal(true)
+
+    try {
+      const response = await fetch(`${apiUrl}/ai/adjust-experience`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobDescription,
+          entryTitle: entry.title,
+          entrySubtitle: entry.subtitle,
+          entryLocation: entry.location,
+          currentBullets: entry.bullets.map(b => b.content)
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to generate AI suggestions' }))
+        throw new Error(errorData.error || 'Failed to generate AI suggestions')
+      }
+
+      const data = await response.json()
+      setSuggestedBullets(data.suggestedBullets || [])
+    } catch (error) {
+      console.error('Failed to adjust experience with AI:', error)
+      setAiError(error instanceof Error ? error.message : 'Failed to generate AI suggestions')
+      setSuggestedBullets([])
+    } finally {
+      setIsLoadingAI(false)
+    }
+  }
+
+  const acceptAISuggestions = async () => {
+    if (suggestedBullets.length === 0) return
+
+    try {
+      // Use the current suggestedBullets state which may have been edited
+      await fetch(`${apiUrl}/bullets/bulk/${entry.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bullets: suggestedBullets.filter(b => b.trim().length > 0).map(content => ({ content: content.trim() }))
+        })
+      })
+      setShowAIModal(false)
+      setSuggestedBullets([])
+      onUpdate()
+    } catch (error) {
+      console.error('Failed to update bullets:', error)
+      alert('Failed to update bullets. Please try again.')
+    }
+  }
+
+  const updateSuggestedBullet = (index: number, value: string) => {
+    const updated = [...suggestedBullets]
+    updated[index] = value
+    setSuggestedBullets(updated)
+  }
+
+  // Auto-resize textarea to fit content
+  const autoResizeTextarea = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }
+
+  // Ref to store textarea elements for auto-resize
+  const textareaRefs = useRef<(HTMLTextAreaElement | null)[]>([])
+
+  // Auto-resize textareas when suggestions load or change
+  useEffect(() => {
+    if (suggestedBullets.length > 0 && showAIModal) {
+      textareaRefs.current.forEach((textarea) => {
+        if (textarea) {
+          autoResizeTextarea(textarea)
+        }
+      })
+    }
+  }, [suggestedBullets, showAIModal])
+
+  const declineAISuggestions = () => {
+    setShowAIModal(false)
+    setSuggestedBullets([])
+    setAiError(null)
   }
 
   if (isEditing) {
@@ -1082,6 +1183,15 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate }: EntryCardProps) {
             </button>
           </div>
           <div className="entry-actions">
+            {jobDescription && entry.bullets && entry.bullets.length > 0 && (
+              <button 
+                onClick={adjustWithAI}
+                className="ai-adjust-btn"
+                title="Adjust with AI"
+              >
+                <Sparkles size={14} />
+              </button>
+            )}
             <button 
               onClick={copyAll} 
               className={copiedField === 'all' ? 'copied' : ''}
@@ -1132,6 +1242,81 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate }: EntryCardProps) {
           <Plus size={14} />
         </button>
       </div>
+
+      {/* AI Adjustment Modal */}
+      {showAIModal && (
+        <div className="ai-modal-overlay" onClick={declineAISuggestions}>
+          <div className="ai-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ai-modal-header">
+              <h3>
+                <Sparkles size={18} />
+                AI-Suggested Bullet Points
+              </h3>
+              <button className="close-modal-btn" onClick={declineAISuggestions}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="ai-modal-content">
+              {isLoadingAI ? (
+                <div className="ai-loading">
+                  <Loader2 size={24} className="spinner" />
+                  <p>Analyzing job description and generating suggestions...</p>
+                </div>
+              ) : aiError ? (
+                <div className="ai-error">
+                  <p>{aiError}</p>
+                  <button className="btn-retry" onClick={adjustWithAI}>
+                    Try Again
+                  </button>
+                </div>
+              ) : suggestedBullets.length > 0 ? (
+                <>
+                  <div className="ai-comparison">
+                    <div className="comparison-section">
+                      <h4>Current Bullets</h4>
+                      <ul className="bullets-compare">
+                        {entry.bullets?.map((bullet, idx) => (
+                          <li key={bullet.id}>{bullet.content}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="comparison-section">
+                      <h4>Suggested Bullets (Editable)</h4>
+                      <div className="suggested-bullets-editable">
+                        {suggestedBullets.map((bullet, idx) => (
+                          <textarea
+                            key={idx}
+                            ref={(el) => {
+                              textareaRefs.current[idx] = el
+                              if (el) autoResizeTextarea(el)
+                            }}
+                            className="bullet-input-editable"
+                            value={bullet}
+                            onChange={(e) => {
+                              updateSuggestedBullet(idx, e.target.value)
+                              autoResizeTextarea(e.target)
+                            }}
+                            placeholder={`Bullet point ${idx + 1}...`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ai-modal-actions">
+                    <button className="btn-decline" onClick={declineAISuggestions}>
+                      Decline
+                    </button>
+                    <button className="btn-accept" onClick={acceptAISuggestions}>
+                      Accept Changes
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .entry-card {
@@ -1277,6 +1462,239 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate }: EntryCardProps) {
 
         .entry-actions button.copied {
           color: var(--accent-success, #22c55e);
+        }
+
+        .entry-actions .ai-adjust-btn {
+          color: var(--accent-primary, #6366f1);
+        }
+
+        .entry-actions .ai-adjust-btn:hover {
+          background: rgba(99, 102, 241, 0.1);
+          color: var(--accent-secondary, #818cf8);
+        }
+
+        .ai-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          padding: 20px;
+        }
+
+        .ai-modal {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 900px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .ai-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .ai-modal-header h3 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+
+        .ai-modal-header svg {
+          color: var(--accent-primary);
+        }
+
+        .close-modal-btn {
+          padding: 8px;
+          border-radius: 8px;
+          color: var(--text-muted);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all 150ms ease;
+        }
+
+        .close-modal-btn:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .ai-modal-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 24px;
+        }
+
+        .ai-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 60px 20px;
+          gap: 16px;
+          color: var(--text-secondary);
+        }
+
+        .ai-loading .spinner {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .ai-error {
+          text-align: center;
+          padding: 40px 20px;
+          color: var(--text-secondary);
+        }
+
+        .ai-error p {
+          margin-bottom: 16px;
+          color: var(--accent-danger);
+        }
+
+        .btn-retry {
+          padding: 8px 16px;
+          background: var(--accent-primary);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 500;
+        }
+
+        .btn-retry:hover {
+          background: var(--accent-secondary);
+        }
+
+        .ai-comparison {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .comparison-section h4 {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 12px;
+        }
+
+        .bullets-compare {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+
+        .bullets-compare li {
+          padding: 8px 12px;
+          margin-bottom: 8px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: 6px;
+          font-size: 0.875rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+
+        .bullets-compare.suggested li {
+          background: rgba(99, 102, 241, 0.1);
+          border-color: var(--accent-primary);
+          color: var(--text-primary);
+        }
+
+        .suggested-bullets-editable {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .bullet-input-editable {
+          width: 100%;
+          padding: 10px 12px;
+          background: rgba(99, 102, 241, 0.1);
+          border: 2px solid var(--accent-primary);
+          border-radius: 6px;
+          font-size: 0.875rem;
+          color: var(--text-primary);
+          line-height: 1.5;
+          resize: none;
+          overflow: hidden;
+          min-height: 50px;
+          font-family: var(--font-sans, inherit);
+          transition: border-color 150ms ease, box-shadow 150ms ease;
+        }
+
+        .bullet-input-editable:focus {
+          outline: none;
+          border-color: var(--accent-secondary);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+          background: rgba(99, 102, 241, 0.15);
+        }
+
+        .bullet-input-editable::placeholder {
+          color: var(--text-muted);
+        }
+
+        .ai-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          padding-top: 20px;
+          border-top: 1px solid var(--border-subtle);
+        }
+
+        .btn-decline,
+        .btn-accept {
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 150ms ease;
+          border: none;
+        }
+
+        .btn-decline {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .btn-decline:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .btn-accept {
+          background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+          color: white;
+          box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-accept:hover {
+          box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        @media (max-width: 768px) {
+          .ai-comparison {
+            grid-template-columns: 1fr;
+          }
         }
 
         .bullets-list {

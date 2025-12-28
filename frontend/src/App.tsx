@@ -22,6 +22,7 @@ function App() {
   const [userSettings, setUserSettings] = useState<UserSettings>(loadSettings)
   const [template, setTemplate] = useState<ResumeTemplate>('classic')
   const [viewMode, setViewMode] = useState<ViewMode>('preview')
+  const [currentJobDescription, setCurrentJobDescription] = useState<string | null>(null)
   const resumeContentRef = useRef<HTMLDivElement>(null)
 
 
@@ -231,6 +232,7 @@ function App() {
               resume={selectedResume}
               onUpdate={fetchResumeDetails}
               apiUrl={API_URL}
+              jobDescription={currentJobDescription}
             />
           </motion.div>
         </AnimatePresence>
@@ -269,7 +271,10 @@ function App() {
                 transition={{ duration: 0.2 }}
                 style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
               >
-                <JobDescription resumeId={selectedResumeId} />
+                <JobDescription 
+                  resumeId={selectedResumeId}
+                  onJobDescriptionChange={setCurrentJobDescription}
+                />
               </motion.div>
             )}
           </AnimatePresence>

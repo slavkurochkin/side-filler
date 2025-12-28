@@ -15,9 +15,10 @@ interface JobDescriptionData {
 
 interface JobDescriptionProps {
   resumeId: string | null
+  onJobDescriptionChange?: (description: string | null) => void
 }
 
-export function JobDescription({ resumeId }: JobDescriptionProps) {
+export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescriptionProps) {
   const [jobDescription, setJobDescription] = useState('')
   const [jobPostingUrl, setJobPostingUrl] = useState('')
   const [copied, setCopied] = useState(false)
@@ -71,8 +72,11 @@ export function JobDescription({ resumeId }: JobDescriptionProps) {
       setJobDescription('')
       setJobPostingUrl('')
       setSelectedDescriptionId(null)
+      if (onJobDescriptionChange) {
+        onJobDescriptionChange(null)
+      }
     }
-  }, [resumeId])
+  }, [resumeId, onJobDescriptionChange])
 
   // Debug: Log when component renders
   useEffect(() => {
@@ -113,15 +117,27 @@ export function JobDescription({ resumeId }: JobDescriptionProps) {
       const response = await fetch(`${API_URL}/job-descriptions/${description.id}`)
       if (response.ok) {
         const data = await response.json()
-        setJobDescription(data.content || '')
+        const content = data.content || ''
+        setJobDescription(content)
         setJobPostingUrl(data.job_posting_url || '')
         setSelectedDescriptionId(data.id)
         setIsDropdownOpen(false)
+        // Notify parent about job description change
+        if (onJobDescriptionChange) {
+          onJobDescriptionChange(content)
+        }
       }
     } catch (error) {
       console.error('Failed to load job description:', error)
     }
   }
+  
+  // Notify parent when job description text changes
+  useEffect(() => {
+    if (onJobDescriptionChange) {
+      onJobDescriptionChange(jobDescription || null)
+    }
+  }, [jobDescription, onJobDescriptionChange])
 
   const handleSave = async () => {
     if (!resumeId || !jobDescription.trim()) return

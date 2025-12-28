@@ -9,9 +9,91 @@ import entryRoutes from './routes/entries.js';
 import bulletRoutes from './routes/bullets.js';
 import urlRoutes from './routes/urls.js';
 import jobDescriptionRoutes from './routes/job-descriptions.js';
+import settingsRoutes from './routes/settings.js';
+import aiRoutes from './routes/ai.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Auto-migration: Check and create settings table if it doesn't exist
+async function ensureSettingsTable() {
+  try {
+    const result = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'settings'
+      )
+    `);
+    
+    if (!result.rows[0].exists) {
+      console.log('⚙️ Creating settings table...');
+      
+      await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+      
+      await pool.query(`
+        CREATE TABLE settings (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          key VARCHAR(255) UNIQUE NOT NULL,
+          value TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_settings_key ON settings(key)
+      `);
+      
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+        END;
+        $$ language 'plpgsql'
+      `);
+      
+      await pool.query(`
+        DROP TRIGGER IF EXISTS update_settings_updated_at ON settings
+      `);
+      
+      await pool.query(`
+        CREATE TRIGGER update_settings_updated_at 
+        BEFORE UPDATE ON settings 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column()
+      `);
+      
+      // Insert default settings
+      await pool.query(`
+        INSERT INTO settings (key, value) 
+        VALUES ('openai_api_key', NULL),
+               ('openai_model', 'gpt-4o-mini')
+        ON CONFLICT (key) DO NOTHING
+      `);
+      
+      console.log('✅ settings table created successfully');
+    } else {
+      console.log('✅ settings table already exists');
+      
+      // Ensure openai_model setting exists for existing tables
+      try {
+        await pool.query(`
+          INSERT INTO settings (key, value) 
+          VALUES ('openai_model', 'gpt-4o-mini')
+          ON CONFLICT (key) DO NOTHING
+        `);
+        console.log('✅ Verified openai_model setting exists');
+      } catch (error) {
+        console.error('⚠️ Error checking openai_model setting:', error);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring settings table:', error);
+  }
+}
 
 // Auto-migration: Check and create job_descriptions table if it doesn't exist
 async function ensureJobDescriptionsTable() {
@@ -127,7 +209,8 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Run migration on startup
+// Run migrations on startup
+ensureSettingsTable();
 ensureJobDescriptionsTable();
 
 // Health check
@@ -147,6 +230,8 @@ app.use('/api/entries', entryRoutes);
 app.use('/api/bullets', bulletRoutes);
 app.use('/api/urls', urlRoutes);
 app.use('/api/job-descriptions', jobDescriptionRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

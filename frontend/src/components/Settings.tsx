@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, User, Mail, Phone, Globe, Linkedin, Github, Save, Palette } from 'lucide-react'
+import { X, User, Mail, Phone, Globe, Linkedin, Github, Save, Palette, Key } from 'lucide-react'
+
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 export interface UserSettings {
   defaultName: string
@@ -71,17 +73,113 @@ export function saveThemeColor(color: string): void {
 export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
   const [themeColor, setThemeColor] = useState<string>('#6366f1')
+  const [openaiKey, setOpenaiKey] = useState<string>('')
+  const [originalOpenaiKey, setOriginalOpenaiKey] = useState<string>('')
+  const [openaiModel, setOpenaiModel] = useState<string>('gpt-4o-mini')
+  const [isLoadingKey, setIsLoadingKey] = useState(false)
+  const [isKeyFocused, setIsKeyFocused] = useState(false)
+  
+  const OPENAI_MODELS = [
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast & Cost-effective)' },
+    { value: 'gpt-4o', label: 'GPT-4o (Recommended)' },
+    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { value: 'gpt-4', label: 'GPT-4' },
+    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (Legacy)' },
+  ]
 
   useEffect(() => {
     if (isOpen) {
       setSettings(loadSettings())
       setThemeColor(loadThemeColor())
+      fetchOpenAIKey()
+      fetchOpenAIModel()
     }
   }, [isOpen])
 
-  const handleSave = () => {
+  const fetchOpenAIKey = async () => {
+    setIsLoadingKey(true)
+    try {
+      const response = await fetch(`${API_URL}/settings/openai_api_key`)
+      if (response.ok) {
+        const data = await response.json()
+        const keyValue = data.value || ''
+        setOpenaiKey(keyValue)
+        setOriginalOpenaiKey(keyValue)
+      } else if (response.status === 404) {
+        // Key doesn't exist yet, that's fine
+        setOpenaiKey('')
+        setOriginalOpenaiKey('')
+      }
+    } catch (error) {
+      console.error('Failed to fetch OpenAI key:', error)
+      setOpenaiKey('')
+      setOriginalOpenaiKey('')
+    } finally {
+      setIsLoadingKey(false)
+    }
+  }
+
+  const fetchOpenAIModel = async () => {
+    try {
+      const response = await fetch(`${API_URL}/settings/openai_model`)
+      if (response.ok) {
+        const data = await response.json()
+        setOpenaiModel(data.value || 'gpt-4o-mini')
+      } else if (response.status === 404) {
+        // Model doesn't exist yet, use default
+        setOpenaiModel('gpt-4o-mini')
+      }
+    } catch (error) {
+      console.error('Failed to fetch OpenAI model:', error)
+      setOpenaiModel('gpt-4o-mini')
+    }
+  }
+
+  const getDisplayValue = () => {
+    if (isLoadingKey) return ''
+    if (isKeyFocused || openaiKey === '') {
+      // Show actual value when focused or empty
+      return openaiKey
+    }
+    if (originalOpenaiKey && openaiKey === originalOpenaiKey && originalOpenaiKey.length > 4) {
+      // Show masked value with last 4 characters when not focused and unchanged
+      const last4 = originalOpenaiKey.slice(-4)
+      return '•'.repeat(Math.max(0, originalOpenaiKey.length - 4)) + last4
+    }
+    // Show actual value when user has changed it or key is too short
+    return openaiKey
+  }
+  
+  const handleKeyFocus = () => {
+    setIsKeyFocused(true)
+    // When focusing, if the key hasn't been changed, ensure we show the original value
+    if (openaiKey === originalOpenaiKey && originalOpenaiKey) {
+      setOpenaiKey(originalOpenaiKey)
+    }
+  }
+
+  const handleSave = async () => {
     saveSettings(settings)
     saveThemeColor(themeColor)
+    
+    // Save OpenAI key and model to backend
+    try {
+      await Promise.all([
+        fetch(`${API_URL}/settings/openai_api_key`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: openaiKey })
+        }),
+        fetch(`${API_URL}/settings/openai_model`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: openaiModel })
+        })
+      ])
+    } catch (error) {
+      console.error('Failed to save OpenAI settings:', error)
+    }
+    
     onSave(settings)
     onClose()
   }
@@ -214,6 +312,54 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
 
               <div className="settings-section">
                 <h3>
+                  <Key size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
+                  API Configuration
+                </h3>
+                <p className="section-desc">
+                  Configure API keys for AI-powered features
+                </p>
+
+                <div className="form-group">
+                  <label>
+                    <Key size={16} />
+                    OpenAI API Key
+                  </label>
+                  <input
+                    type="text"
+                    value={getDisplayValue()}
+                    onChange={e => setOpenaiKey(e.target.value)}
+                    onFocus={handleKeyFocus}
+                    onBlur={() => setIsKeyFocused(false)}
+                    placeholder={isLoadingKey ? 'Loading...' : 'sk-...'}
+                    disabled={isLoadingKey}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
+                    Your API key is stored securely in the database and used for Langchain services
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label>
+                    OpenAI Model
+                  </label>
+                  <select
+                    value={openaiModel}
+                    onChange={e => setOpenaiModel(e.target.value)}
+                  >
+                    {OPENAI_MODELS.map(model => (
+                      <option key={model.value} value={model.value}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
+                    Choose the OpenAI model to use for AI-powered features. GPT-4o Mini is fastest and most cost-effective.
+                  </p>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <h3>
                   <Palette size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
                   Resume Theme Color
                 </h3>
@@ -305,7 +451,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
               border: 1px solid var(--border-default);
               border-radius: 16px;
               width: 100%;
-              max-width: 500px;
+              max-width: 600px;
               max-height: 90vh;
               display: flex;
               flex-direction: column;
@@ -375,7 +521,8 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
             }
 
             .form-group input,
-            .form-group textarea {
+            .form-group textarea,
+            .form-group select {
               width: 100%;
               padding: 10px 12px;
               background: var(--bg-tertiary);
@@ -387,10 +534,20 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
             }
 
             .form-group input:focus,
-            .form-group textarea:focus {
+            .form-group textarea:focus,
+            .form-group select:focus {
               outline: none;
               border-color: var(--accent-primary);
               box-shadow: 0 0 0 3px var(--accent-glow);
+            }
+
+            .form-group select {
+              cursor: pointer;
+              appearance: none;
+              background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366f1' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+              background-repeat: no-repeat;
+              background-position: right 12px center;
+              padding-right: 36px;
             }
 
             .form-group input::placeholder,
