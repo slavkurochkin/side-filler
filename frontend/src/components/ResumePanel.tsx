@@ -1170,6 +1170,120 @@ function SectionCard({
   onDrop
 }: SectionCardProps) {
   const Icon = sectionIcons[section.section_type] || FileText
+  const isSkillsSection = section.section_type === 'skills'
+  const [showSkillsAIModal, setShowSkillsAIModal] = useState(false)
+  const [isLoadingSkillsAI, setIsLoadingSkillsAI] = useState(false)
+  const [skillsAIError, setSkillsAIError] = useState<string | null>(null)
+  const [suggestedSkills, setSuggestedSkills] = useState<string[]>([])
+
+  const adjustSkillsWithAI = async () => {
+    if (!jobDescription) {
+      return
+    }
+
+    setIsLoadingSkillsAI(true)
+    setSkillsAIError(null)
+    setShowSkillsAIModal(true)
+
+    try {
+      // Collect all current skills from all entries in the section
+      const currentSkills = section.entries?.flatMap(entry => 
+        entry.bullets?.map(bullet => bullet.content) || []
+      ) || []
+
+      const response = await fetch(`${apiUrl}/ai/adjust-skills`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobDescription,
+          currentSkills
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to generate AI suggestions' }))
+        throw new Error(errorData.error || 'Failed to generate AI suggestions')
+      }
+
+      const data = await response.json()
+      setSuggestedSkills(data.suggestedSkills || [])
+    } catch (error) {
+      console.error('Failed to adjust skills with AI:', error)
+      setSkillsAIError(error instanceof Error ? error.message : 'Failed to generate AI suggestions')
+      setSuggestedSkills([])
+    } finally {
+      setIsLoadingSkillsAI(false)
+    }
+  }
+
+  const acceptSkillsAISuggestions = async () => {
+    if (suggestedSkills.length === 0) return
+
+    try {
+      // Get the first entry in the section, or create one if none exists
+      let entryId: string | null = null
+      if (section.entries && section.entries.length > 0) {
+        entryId = section.entries[0].id
+      } else {
+        // Create a new entry for the skills section
+        const createEntryResponse = await fetch(`${apiUrl}/entries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section_id: section.id,
+            title: 'Skills',
+            sort_order: 0
+          })
+        })
+        if (!createEntryResponse.ok) {
+          throw new Error('Failed to create entry')
+        }
+        const newEntry = await createEntryResponse.json()
+        entryId = newEntry.id
+      }
+
+      if (!entryId) {
+        throw new Error('No entry available')
+      }
+
+      // Use bulk update to replace all bullets with the new skills
+      await fetch(`${apiUrl}/bullets/bulk/${entryId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bullets: suggestedSkills.filter(s => s.trim().length > 0).map(content => ({ content: content.trim() }))
+        })
+      })
+
+      setShowSkillsAIModal(false)
+      setSuggestedSkills([])
+      onUpdate()
+    } catch (error) {
+      console.error('Failed to update skills:', error)
+      alert('Failed to update skills. Please try again.')
+    }
+  }
+
+  const declineSkillsAISuggestions = () => {
+    setShowSkillsAIModal(false)
+    setSuggestedSkills([])
+    setSkillsAIError(null)
+  }
+
+  const updateSuggestedSkill = (index: number, value: string) => {
+    const updated = [...suggestedSkills]
+    updated[index] = value
+    setSuggestedSkills(updated)
+  }
+
+  const removeSuggestedSkill = (index: number) => {
+    const updated = suggestedSkills.filter((_, i) => i !== index)
+    setSuggestedSkills(updated)
+  }
+
+  const addSuggestedSkill = () => {
+    setSuggestedSkills([...suggestedSkills, ''])
+  }
 
   return (
     <motion.div 
@@ -1201,6 +1315,18 @@ function SectionCard({
           <span className="entry-count">{section.entries?.length || 0}</span>
         </div>
         <div className="section-actions">
+          {isSkillsSection && jobDescription && (
+            <button 
+              className="action-btn ai-btn" 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                adjustSkillsWithAI(); 
+              }}
+              title="Generate AI-optimized skills"
+            >
+              <Sparkles size={14} />
+            </button>
+          )}
           <button className="action-btn delete" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
             <Trash2 size={14} />
           </button>
@@ -1235,6 +1361,98 @@ function SectionCard({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Skills AI Modal */}
+      {showSkillsAIModal && (
+        <div className="skills-ai-modal-overlay" onClick={declineSkillsAISuggestions}>
+          <div className="skills-ai-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="skills-ai-modal-header">
+              <h3>
+                <Sparkles size={18} />
+                AI-Optimized Skills
+              </h3>
+              <button className="close-modal-btn" onClick={declineSkillsAISuggestions}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="skills-ai-modal-content">
+              {isLoadingSkillsAI ? (
+                <div className="ai-loading">
+                  <Loader2 size={24} className="spinner" />
+                  <p>Analyzing job description and generating skills...</p>
+                </div>
+              ) : skillsAIError ? (
+                <div className="ai-error">
+                  <p>{skillsAIError}</p>
+                  <button className="btn-retry" onClick={adjustSkillsWithAI}>
+                    Try Again
+                  </button>
+                </div>
+              ) : suggestedSkills.length > 0 ? (
+                <>
+                  <div className="skills-ai-comparison">
+                    <div className="comparison-section">
+                      <h4>Current Skills</h4>
+                      <div className="skills-compare">
+                        {section.entries?.flatMap(entry => 
+                          entry.bullets?.map(bullet => bullet.content) || []
+                        ).length > 0 ? (
+                          <div className="skills-tags">
+                            {section.entries?.flatMap(entry => 
+                              entry.bullets?.map(bullet => (
+                                <span key={bullet.id} className="skill-tag">
+                                  {bullet.content}
+                                </span>
+                              )) || []
+                            )}
+                          </div>
+                        ) : (
+                          <em>No skills provided</em>
+                        )}
+                      </div>
+                    </div>
+                    <div className="comparison-section">
+                      <h4>Suggested Skills (Editable)</h4>
+                      <div className="suggested-skills-editable">
+                        {suggestedSkills.map((skill, idx) => (
+                          <div key={idx} className="skill-input-row">
+                            <input
+                              type="text"
+                              className="skill-input"
+                              value={skill}
+                              onChange={(e) => updateSuggestedSkill(idx, e.target.value)}
+                              placeholder={`Skill ${idx + 1}...`}
+                            />
+                            <button 
+                              className="skill-remove-btn" 
+                              onClick={() => removeSuggestedSkill(idx)}
+                              title="Remove skill"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        <button className="skill-add-btn" onClick={addSuggestedSkill}>
+                          <Plus size={14} /> Add Skill
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="skills-ai-modal-actions">
+                    <button className="btn-decline" onClick={declineSkillsAISuggestions}>
+                      Decline
+                    </button>
+                    <button className="btn-accept" onClick={acceptSkillsAISuggestions}>
+                      Use These Skills
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .section-card {
@@ -1352,6 +1570,195 @@ function SectionCard({
 
         .action-btn.delete:hover {
           color: var(--accent-danger);
+        }
+
+        .action-btn.ai-btn {
+          color: var(--accent-primary);
+        }
+
+        .action-btn.ai-btn:hover {
+          background: rgba(99, 102, 241, 0.1);
+          color: var(--accent-secondary);
+        }
+
+        .skills-ai-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          padding: 20px;
+        }
+
+        .skills-ai-modal {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 900px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .skills-ai-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .skills-ai-modal-header h3 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .skills-ai-modal-header h3 svg {
+          color: var(--accent-primary);
+        }
+
+        .skills-ai-modal-content {
+          padding: 24px;
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .skills-ai-comparison {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .skills-compare {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 16px;
+          min-height: 200px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+
+        .skills-compare em {
+          color: var(--text-muted);
+          font-style: italic;
+        }
+
+        .skills-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .skill-tag {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-full);
+          padding: 6px 12px;
+          font-size: 0.875rem;
+          color: var(--text-primary);
+          white-space: nowrap;
+        }
+
+        .suggested-skills-editable {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 16px;
+          min-height: 200px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+
+        .skill-input-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .skill-input {
+          flex: 1;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-sm);
+          padding: 8px 12px;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          font-family: inherit;
+        }
+
+        .skill-input:focus {
+          outline: none;
+          border-color: var(--accent-secondary);
+          box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        .skill-remove-btn {
+          padding: 6px;
+          background: transparent;
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .skill-remove-btn:hover {
+          background: var(--accent-danger);
+          border-color: var(--accent-danger);
+          color: white;
+        }
+
+        .skill-add-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 12px;
+          background: var(--bg-tertiary);
+          border: 1px dashed var(--border-default);
+          border-radius: var(--radius-sm);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          width: 100%;
+          justify-content: center;
+          margin-top: 8px;
+        }
+
+        .skill-add-btn:hover {
+          background: var(--accent-glow);
+          border-color: var(--accent-primary);
+          color: var(--accent-primary);
+        }
+
+        .skills-ai-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          padding-top: 16px;
+          border-top: 1px solid var(--border-subtle);
+        }
+
+        @media (max-width: 768px) {
+          .skills-ai-comparison {
+            grid-template-columns: 1fr;
+          }
         }
 
         .section-content {

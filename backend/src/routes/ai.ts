@@ -18,6 +18,11 @@ interface AdjustSummaryRequest {
   resumeTitle?: string;
 }
 
+interface AdjustSkillsRequest {
+  jobDescription: string;
+  currentSkills: string[];
+}
+
 /**
  * Adjust experience bullets based on job description
  * POST /api/ai/adjust-experience
@@ -208,6 +213,90 @@ ATS-Optimized Professional Summary:`;
 
   } catch (error) {
     console.error('Error adjusting summary with AI:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({ 
+      error: 'Failed to generate AI suggestions',
+      details: errorMessage
+    });
+  }
+});
+
+/**
+ * Generate or adjust skills list based on job description
+ * POST /api/ai/adjust-skills
+ */
+router.post('/adjust-skills', async (req: Request, res: Response) => {
+  try {
+    const { jobDescription, currentSkills }: AdjustSkillsRequest = req.body;
+
+    // Validate required fields
+    if (!jobDescription) {
+      return res.status(400).json({ 
+        error: 'jobDescription is required' 
+      });
+    }
+
+    // Get Langchain client
+    const client = await getLangchainClient();
+    if (!client) {
+      return res.status(503).json({ 
+        error: 'AI service not available. Please configure OpenAI API key in settings.' 
+      });
+    }
+
+    const currentSkillsText = currentSkills && currentSkills.length > 0
+      ? currentSkills.join(', ')
+      : 'No current skills provided.';
+
+    // Create prompt
+    const prompt = `You are an ATS (Applicant Tracking System) optimization expert. Your task is to generate or refine a comprehensive list of skills that are relevant and optimized for the specific job description.
+
+Job Description:
+${jobDescription}
+
+Current Skills:
+${currentSkillsText}
+
+Instructions for ATS-Optimized Skills List:
+1. Extract ALL relevant technical skills, tools, technologies, programming languages, frameworks, methodologies, software, and platforms mentioned in the job description
+2. Extract relevant soft skills and competencies mentioned
+3. Include industry-standard terminology and common variations (e.g., "JavaScript" and "JS", "React.js" and "React")
+4. Prioritize skills that are explicitly mentioned or strongly implied in the job description
+5. If current skills are provided, include relevant ones while adding missing important skills from the job description
+6. Group related skills logically (e.g., programming languages together, frameworks together)
+7. Include both hard skills (technical) and soft skills (communication, teamwork, etc.) if mentioned
+8. Avoid duplicates - use the most common industry term for each skill
+9. Return a comprehensive list that would help the candidate pass ATS screening for this specific job
+10. Return ONLY a comma-separated list of skills, with no labels, headers, numbering, or additional commentary
+11. Limit to 30-50 most relevant skills maximum
+
+ATS-Optimized Skills List:`;
+
+    // Call OpenAI
+    const response = await client.invoke(prompt);
+
+    // Parse response to extract skills
+    // Langchain returns an AIMessage object with content property
+    const responseText = response.content?.toString() || String(response);
+
+    // Clean up the response - extract comma-separated skills
+    let suggestedSkills = responseText
+      .trim()
+      .replace(/^(ATS-Optimized Skills List|Skills List|Skills):\s*/i, '')
+      .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+      .split(/[,;]\s*/) // Split by comma or semicolon
+      .map(skill => skill.trim())
+      .filter(skill => skill.length > 0 && skill.length < 100) // Filter out empty and overly long entries
+      .filter((skill, index, self) => self.indexOf(skill) === index) // Remove duplicates
+      .slice(0, 50); // Limit to 50 skills max
+
+    res.json({
+      suggestedSkills: suggestedSkills || [],
+      originalSkills: currentSkills || []
+    });
+
+  } catch (error) {
+    console.error('Error adjusting skills with AI:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       error: 'Failed to generate AI suggestions',
