@@ -483,8 +483,9 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                   )
                 ) : (
                   <div className="entries">
-                    {sections?.flatMap(section => 
-                      section.entries?.map((entry) => (
+                    {sections?.flatMap(section => {
+                      const isCertificate = section.section_type === 'certificates'
+                      return section.entries?.map((entry) => (
                         <div key={entry.id} className="entry">
                           <div className="entry-header">
                             <div className="entry-main">
@@ -514,58 +515,98 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                               )}
                             </div>
                             <div className="entry-meta">
-                              {(entry.start_date || entry.end_date || entry.is_current) && (
-                                <span className="entry-date">
-                                  <Calendar size={12} />
-                                  {formatDate(entry.start_date)}
-                                  {(entry.end_date || entry.is_current) && ' — '}
-                                  {entry.is_current ? 'Present' : formatDate(entry.end_date)}
-                                </span>
-                              )}
-                              {entry.location && (
-                                <span className="entry-location">
-                                  <MapPin size={12} />
-                                  {entry.location}
-                                </span>
+                              {isCertificate ? (
+                                entry.start_date && (
+                                  <span className="entry-date">
+                                    <Calendar size={12} />
+                                    Issued {formatDate(entry.start_date)}
+                                  </span>
+                                )
+                              ) : (
+                                <>
+                                  {(entry.start_date || entry.end_date || entry.is_current) && (
+                                    <span className="entry-date">
+                                      <Calendar size={12} />
+                                      {formatDate(entry.start_date)}
+                                      {(entry.end_date || entry.is_current) && ' — '}
+                                      {entry.is_current ? 'Present' : formatDate(entry.end_date)}
+                                    </span>
+                                  )}
+                                  {entry.location && (
+                                    <span className="entry-location">
+                                      <MapPin size={12} />
+                                      {entry.location}
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
                           
-                          {entry.description && (
-                            <p 
-                              className="entry-description editable-field"
-                              contentEditable={!!apiUrl}
-                              suppressContentEditableWarning
-                              onFocus={() => handleFocus('description', entry.id)}
-                              onBlur={(e) => apiUrl && handleBlur(e, 'description', entry.id)}
-                              onKeyDown={handleKeyDown}
-                              title={apiUrl ? 'Click to edit' : undefined}
-                            >
-                              {entry.description}
-                            </p>
-                          )}
-                          
-                          {entry.bullets && entry.bullets.length > 0 && (
-                            <ul className="entry-bullets">
-                              {entry.bullets.map((bullet) => (
-                                <li 
-                                  key={bullet.id}
-                                  className="editable-field"
+                          {isCertificate ? (
+                            <>
+                              {entry.description && (
+                                <p 
+                                  className="entry-description editable-field"
                                   contentEditable={!!apiUrl}
                                   suppressContentEditableWarning
-                                  onFocus={() => handleFocus('content', entry.id, bullet.id)}
-                                  onBlur={(e) => apiUrl && handleBlur(e, 'content', entry.id, bullet.id)}
+                                  onFocus={() => handleFocus('description', entry.id)}
+                                  onBlur={(e) => apiUrl && handleBlur(e, 'description', entry.id)}
                                   onKeyDown={handleKeyDown}
                                   title={apiUrl ? 'Click to edit' : undefined}
                                 >
-                                  {bullet.content}
-                                </li>
-                              ))}
-                            </ul>
+                                  Credential ID {entry.description}
+                                </p>
+                              )}
+                              {entry.location && (
+                                <a 
+                                  href={entry.location} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="credential-link"
+                                >
+                                  Show credential
+                                </a>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {entry.description && (
+                                <p 
+                                  className="entry-description editable-field"
+                                  contentEditable={!!apiUrl}
+                                  suppressContentEditableWarning
+                                  onFocus={() => handleFocus('description', entry.id)}
+                                  onBlur={(e) => apiUrl && handleBlur(e, 'description', entry.id)}
+                                  onKeyDown={handleKeyDown}
+                                  title={apiUrl ? 'Click to edit' : undefined}
+                                >
+                                  {entry.description}
+                                </p>
+                              )}
+                              {entry.bullets && entry.bullets.length > 0 && (
+                                <ul className="entry-bullets">
+                                  {entry.bullets.map((bullet) => (
+                                    <li 
+                                      key={bullet.id}
+                                      className="editable-field"
+                                      contentEditable={!!apiUrl}
+                                      suppressContentEditableWarning
+                                      onFocus={() => handleFocus('content', entry.id, bullet.id)}
+                                      onBlur={(e) => apiUrl && handleBlur(e, 'content', entry.id, bullet.id)}
+                                      onKeyDown={handleKeyDown}
+                                      title={apiUrl ? 'Click to edit' : undefined}
+                                    >
+                                      {bullet.content}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </>
                           )}
                         </div>
                       )) || []
-                    )}
+                    })}
                   </div>
                 )}
               </motion.section>
@@ -800,6 +841,22 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
         .entry-date svg,
         .entry-location svg {
           color: #94a3b8;
+        }
+
+        .credential-link {
+          color: var(--resume-accent-color);
+          font-size: 0.9rem;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          margin-top: 0.5rem;
+          transition: color 150ms ease;
+        }
+
+        .credential-link:hover {
+          text-decoration: underline;
+          color: var(--accent-secondary);
         }
 
         .entry-description {

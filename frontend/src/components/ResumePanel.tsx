@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, Mail, Phone, FileText, Plus, ChevronDown, ChevronRight,
   Briefcase, GraduationCap, FolderKanban, Sparkles, Edit3, Trash2, Save, X,
-  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp, Loader2, GripVertical
+  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp, Loader2, GripVertical, Award
 } from 'lucide-react'
 import { Resume, Section, Entry } from '../types'
 
@@ -19,6 +19,7 @@ const sectionIcons: Record<string, typeof Briefcase> = {
   education: GraduationCap,
   projects: FolderKanban,
   skills: Sparkles,
+  certificates: Award,
   custom: FileText
 }
 
@@ -514,7 +515,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
         <div className="add-section">
           <span className="add-label">Add Section</span>
           <div className="section-types">
-            {['experience', 'education', 'projects', 'skills'].map((type) => {
+            {['experience', 'education', 'projects', 'skills', 'certificates'].map((type) => {
               const Icon = sectionIcons[type]
               return (
                 <motion.button
@@ -1473,6 +1474,7 @@ function SectionCard({
                 apiUrl={apiUrl}
                 formatDate={formatDate}
                 jobDescription={section.section_type === 'experience' ? jobDescription : null}
+                sectionType={section.section_type}
               />
             ))}
             
@@ -1951,9 +1953,10 @@ interface EntryCardProps {
   apiUrl: string
   formatDate: (date?: string) => string
   jobDescription?: string | null
+  sectionType: string
 }
 
-function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: EntryCardProps) {
+function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription, sectionType }: EntryCardProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState(entry)
   const [newBullet, setNewBullet] = useState('')
@@ -1987,8 +1990,12 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
   }
   
   const copyDates = () => {
-    const dateRange = `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
-    copyField('dates', dateRange)
+    if (isCertificate) {
+      copyField('dates', entry.start_date ? `Issued ${formatDate(entry.start_date)}` : '')
+    } else {
+      const dateRange = `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
+      copyField('dates', dateRange)
+    }
   }
   
   const copyBullets = () => {
@@ -1999,11 +2006,17 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
   }
 
   const copyAll = () => {
-    const dateRange = `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
     let text = `${entry.title}\n`
-    if (entry.subtitle) text += `${entry.subtitle}`
-    if (entry.location) text += ` | ${entry.location}`
-    text += `\n${dateRange}\n`
+    if (entry.subtitle) text += `${entry.subtitle}\n`
+    if (isCertificate) {
+      if (entry.start_date) text += `Issued ${formatDate(entry.start_date)}\n`
+      if (entry.description) text += `Credential ID ${entry.description}\n`
+      if (entry.location) text += `${entry.location}\n`
+    } else {
+      if (entry.location) text += ` | ${entry.location}`
+      const dateRange = `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
+      text += `\n${dateRange}\n`
+    }
     if (entry.bullets && entry.bullets.length > 0) {
       text += '\n'
       entry.bullets.forEach(bullet => {
@@ -2191,50 +2204,91 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
     setAdditionalInstructions('')
   }
 
+  const isCertificate = sectionType === 'certificates'
+
   if (isEditing) {
     return (
       <div className="entry-card editing">
         <div className="entry-form">
-          <input
-            type="text"
-            placeholder="Title (e.g., Senior Developer)"
-            value={editData.title}
-            onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="Subtitle (e.g., Company Name)"
-            value={editData.subtitle || ''}
-            onChange={(e) => setEditData({ ...editData, subtitle: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="Location"
-            value={editData.location || ''}
-            onChange={(e) => setEditData({ ...editData, location: e.target.value })}
-          />
-          <div className="date-row">
-            <input
-              type="date"
-              value={editData.start_date?.split('T')[0] || ''}
-              onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
-            />
-            <span>to</span>
-            <input
-              type="date"
-              value={editData.end_date?.split('T')[0] || ''}
-              onChange={(e) => setEditData({ ...editData, end_date: e.target.value })}
-              disabled={editData.is_current}
-            />
-            <label>
+          {isCertificate ? (
+            <>
               <input
-                type="checkbox"
-                checked={editData.is_current}
-                onChange={(e) => setEditData({ ...editData, is_current: e.target.checked })}
+                type="text"
+                placeholder="Certificate Name (e.g., AI Automation: Build LLM Apps)"
+                value={editData.title}
+                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
               />
-              Current
-            </label>
-          </div>
+              <input
+                type="text"
+                placeholder="Issuing Organization (e.g., Udemy)"
+                value={editData.subtitle || ''}
+                onChange={(e) => setEditData({ ...editData, subtitle: e.target.value })}
+              />
+              <div className="date-row">
+                <label>Issue Date</label>
+                <input
+                  type="date"
+                  value={editData.start_date?.split('T')[0] || ''}
+                  onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Credential ID (optional)"
+                value={editData.description || ''}
+                onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+              />
+              <input
+                type="url"
+                placeholder="Credential URL (optional, e.g., https://...)"
+                value={editData.location || ''}
+                onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+              />
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Title (e.g., Senior Developer)"
+                value={editData.title}
+                onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="Subtitle (e.g., Company Name)"
+                value={editData.subtitle || ''}
+                onChange={(e) => setEditData({ ...editData, subtitle: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="Location"
+                value={editData.location || ''}
+                onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+              />
+              <div className="date-row">
+                <input
+                  type="date"
+                  value={editData.start_date?.split('T')[0] || ''}
+                  onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
+                />
+                <span>to</span>
+                <input
+                  type="date"
+                  value={editData.end_date?.split('T')[0] || ''}
+                  onChange={(e) => setEditData({ ...editData, end_date: e.target.value })}
+                  disabled={editData.is_current}
+                />
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={editData.is_current}
+                    onChange={(e) => setEditData({ ...editData, is_current: e.target.checked })}
+                  />
+                  Current
+                </label>
+              </div>
+            </>
+          )}
           <div className="form-actions">
             <button className="btn-save" onClick={saveEntry}>
               <Save size={14} /> Save
@@ -2291,7 +2345,21 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
             gap: var(--space-xs);
             color: var(--text-secondary);
             font-size: 0.8rem;
-            margin-left: var(--space-sm);
+            margin-right: var(--space-sm);
+          }
+
+          .entry-form input[type="url"] {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-default);
+            border-radius: var(--radius-sm);
+            padding: var(--space-sm);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+          }
+
+          .entry-form input[type="url"]:focus {
+            border-color: var(--accent-primary);
+            outline: none;
           }
 
           .form-actions {
@@ -2324,38 +2392,82 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
               <button 
                 className={`copy-field-btn ${copiedField === 'company' ? 'copied' : ''}`}
                 onClick={copyCompany}
-                title="Copy company name"
+                title={isCertificate ? "Copy issuer" : "Copy company name"}
               >
                 {copiedField === 'company' ? <Check size={12} /> : <Copy size={12} />}
               </button>
             </div>
           )}
-          {entry.location && (
-            <div className="copyable-field">
-              <span className="location">• {entry.location}</span>
-              <button 
-                className={`copy-field-btn ${copiedField === 'location' ? 'copied' : ''}`}
-                onClick={copyLocation}
-                title="Copy location"
-              >
-                {copiedField === 'location' ? <Check size={12} /> : <Copy size={12} />}
-              </button>
-            </div>
+          {isCertificate ? (
+            <>
+              {entry.start_date && (
+                <div className="copyable-field">
+                  <span className="location">Issued {formatDate(entry.start_date)}</span>
+                  <button 
+                    className={`copy-field-btn ${copiedField === 'dates' ? 'copied' : ''}`}
+                    onClick={copyDates}
+                    title="Copy issue date"
+                  >
+                    {copiedField === 'dates' ? <Check size={12} /> : <Copy size={12} />}
+                  </button>
+                </div>
+              )}
+              {entry.description && (
+                <div className="copyable-field">
+                  <span className="location">Credential ID {entry.description}</span>
+                  <button 
+                    className={`copy-field-btn ${copiedField === 'credential' ? 'copied' : ''}`}
+                    onClick={() => copyField('credential', entry.description || '')}
+                    title="Copy credential ID"
+                  >
+                    {copiedField === 'credential' ? <Check size={12} /> : <Copy size={12} />}
+                  </button>
+                </div>
+              )}
+              {entry.location && (
+                <div className="copyable-field">
+                  <a 
+                    href={entry.location} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="credential-link"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Show credential
+                  </a>
+                </div>
+              )}
+            </>
+          ) : (
+            entry.location && (
+              <div className="copyable-field">
+                <span className="location">• {entry.location}</span>
+                <button 
+                  className={`copy-field-btn ${copiedField === 'location' ? 'copied' : ''}`}
+                  onClick={copyLocation}
+                  title="Copy location"
+                >
+                  {copiedField === 'location' ? <Check size={12} /> : <Copy size={12} />}
+                </button>
+              </div>
+            )
           )}
         </div>
         <div className="entry-meta">
-          <div className="copyable-field">
-            <span className="date-range">
-              {formatDate(entry.start_date)} - {entry.is_current ? 'Present' : formatDate(entry.end_date)}
-            </span>
-            <button 
-              className={`copy-field-btn ${copiedField === 'dates' ? 'copied' : ''}`}
-              onClick={copyDates}
-              title="Copy dates"
-            >
-              {copiedField === 'dates' ? <Check size={12} /> : <Copy size={12} />}
-            </button>
-          </div>
+          {!isCertificate && (
+            <div className="copyable-field">
+              <span className="date-range">
+                {formatDate(entry.start_date)} - {entry.is_current ? 'Present' : formatDate(entry.end_date)}
+              </span>
+              <button 
+                className={`copy-field-btn ${copiedField === 'dates' ? 'copied' : ''}`}
+                onClick={copyDates}
+                title="Copy dates"
+              >
+                {copiedField === 'dates' ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+            </div>
+          )}
           <div className="entry-actions">
             {jobDescription && entry.bullets && entry.bullets.length > 0 && (
               <button 
@@ -2664,6 +2776,21 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
         .location {
           color: var(--text-muted);
           font-size: 0.8rem;
+        }
+
+        .credential-link {
+          color: var(--accent-primary);
+          font-size: 0.8rem;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          transition: color var(--transition-fast);
+        }
+
+        .credential-link:hover {
+          color: var(--accent-secondary);
+          text-decoration: underline;
         }
 
         .entry-meta {

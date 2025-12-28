@@ -19,7 +19,7 @@ export interface Entry {
 
 export interface Section {
   id: string
-  section_type: 'experience' | 'education' | 'projects' | 'skills' | 'custom'
+  section_type: 'experience' | 'education' | 'projects' | 'skills' | 'certificates' | 'custom'
   title: string
   sort_order: number
   entries: Entry[]
