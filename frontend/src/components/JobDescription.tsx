@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Copy, Check, Save, ChevronDown, Trash2, Plus, ExternalLink } from 'lucide-react'
+import { FileText, Copy, Check, Save, ChevronDown, Trash2, Plus, ExternalLink, Edit3 } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -28,9 +28,12 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [saveTitle, setSaveTitle] = useState('')
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [editTitleValue, setEditTitleValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const headerActionsRef = useRef<HTMLDivElement>(null)
+  const titleInputRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     const updateHeight = () => {
@@ -122,6 +125,7 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
         setJobPostingUrl(data.job_posting_url || '')
         setSelectedDescriptionId(data.id)
         setIsDropdownOpen(false)
+        setEditingTitle(false)
         // Notify parent about job description change
         if (onJobDescriptionChange) {
           onJobDescriptionChange(content)
@@ -130,6 +134,59 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
     } catch (error) {
       console.error('Failed to load job description:', error)
     }
+  }
+
+  const handleTitleEdit = () => {
+    if (!selectedDescription) return
+    setEditTitleValue(selectedDescription.title || '')
+    setEditingTitle(true)
+  }
+
+  useEffect(() => {
+    if (editingTitle && titleInputRef.current) {
+      titleInputRef.current.focus()
+      // Select all text
+      const range = document.createRange()
+      range.selectNodeContents(titleInputRef.current)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }, [editingTitle])
+
+  const handleTitleSave = async () => {
+    if (!selectedDescriptionId) return
+
+    const newTitle = titleInputRef.current?.textContent?.trim() || ''
+
+    try {
+      const response = await fetch(`${API_URL}/job-descriptions/${selectedDescriptionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle || null,
+          content: jobDescription,
+          job_posting_url: jobPostingUrl
+        })
+      })
+
+      if (response.ok) {
+        setEditingTitle(false)
+        setEditTitleValue('')
+        await fetchSavedDescriptions()
+      } else {
+        console.error('Failed to update title')
+        alert('Failed to update title')
+      }
+    } catch (error) {
+      console.error('Failed to update title:', error)
+      alert('Failed to update title')
+    }
+  }
+
+  const handleTitleCancel = () => {
+    setEditingTitle(false)
+    setEditTitleValue('')
   }
   
   // Notify parent when job description text changes
@@ -142,7 +199,50 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
   const handleSave = async () => {
     if (!resumeId || !jobDescription.trim()) return
 
+    // If a job description is selected, update it directly
+    if (selectedDescriptionId) {
+      await handleUpdate()
+      return
+    }
+
+    // Otherwise, show save dialog to create new one
     setShowSaveDialog(true)
+  }
+
+  const handleUpdate = async () => {
+    if (!selectedDescriptionId || !jobDescription.trim()) return
+
+    try {
+      setSaveStatus('saving')
+      const response = await fetch(`${API_URL}/job-descriptions/${selectedDescriptionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: jobDescription,
+          title: selectedDescription?.title || null,
+          job_posting_url: jobPostingUrl.trim() || null
+        })
+      })
+
+      if (response.ok) {
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+        // Refresh the list to get updated data
+        await fetchSavedDescriptions()
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('Failed to update job description:', response.status, errorData)
+        alert(`Failed to update: ${errorData.error || errorData.details || 'Unknown error'}`)
+        setSaveStatus('error')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      }
+    } catch (error) {
+      console.error('Failed to update job description:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Network error'
+      alert(`Failed to update: ${errorMessage}`)
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    }
   }
 
   const confirmSave = async () => {
@@ -195,6 +295,17 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
       alert(`Failed to save: ${errorMessage}`)
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 2000)
+    }
+  }
+
+  const handleNew = () => {
+    setSelectedDescriptionId(null)
+    setJobDescription('')
+    setJobPostingUrl('')
+    setEditingTitle(false)
+    setIsDropdownOpen(false)
+    if (onJobDescriptionChange) {
+      onJobDescriptionChange(null)
     }
   }
 
@@ -266,10 +377,57 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
           <div style={{ position: 'relative' }}>
             <button
               className="selector-btn"
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              onClick={() => !editingTitle && setIsDropdownOpen(!isDropdownOpen)}
               title="Select saved job description"
             >
-              <span>{selectedDescription ? getDescriptionTitle(selectedDescription) : 'Select...'}</span>
+              {editingTitle ? (
+                <span
+                  ref={titleInputRef}
+                  className="title-edit-input"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={handleTitleSave}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      titleInputRef.current?.blur()
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault()
+                      handleTitleCancel()
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  style={{ outline: 'none', flex: 1, minWidth: 0 }}
+                >
+                  {editTitleValue}
+                </span>
+              ) : (
+                <>
+                  <span 
+                    className="selector-title"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      handleTitleEdit()
+                    }}
+                    title="Double-click to edit title"
+                  >
+                    {selectedDescription ? getDescriptionTitle(selectedDescription) : 'Select...'}
+                  </span>
+                  {selectedDescription && (
+                    <button
+                      className="edit-title-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleTitleEdit()
+                      }}
+                      title="Edit title"
+                    >
+                      <Edit3 size={12} />
+                    </button>
+                  )}
+                </>
+              )}
               <ChevronDown size={16} className={isDropdownOpen ? 'open' : ''} />
             </button>
             {isDropdownOpen && (
@@ -299,13 +457,21 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
             )}
           </div>
           <button
+            className="new-btn"
+            onClick={handleNew}
+            title="Create new job description"
+          >
+            <Plus size={16} />
+            <span>New</span>
+          </button>
+          <button
             className="save-btn"
             onClick={handleSave}
             disabled={!jobDescription.trim() || saveStatus === 'saving' || !resumeId}
-            title="Save job description"
+            title={selectedDescriptionId ? "Update job description" : "Save job description"}
           >
             <Save size={16} />
-            <span>Save</span>
+            <span>{selectedDescriptionId ? 'Update' : 'Save'}</span>
           </button>
           <button 
             className={`copy-btn ${copied ? 'copied' : ''}`}
@@ -521,6 +687,56 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
           transform: rotate(180deg);
         }
 
+        .selector-title {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .edit-title-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px 4px;
+          margin: 0 4px;
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          cursor: pointer;
+          opacity: 0;
+          transition: all var(--transition-fast);
+        }
+
+        .selector-btn:hover .edit-title-btn {
+          opacity: 1;
+        }
+
+        .edit-title-btn:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .title-edit-input {
+          flex: 1;
+          min-width: 0;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-sm);
+          padding: 2px 6px;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          outline: none;
+        }
+
+        .title-edit-input:focus {
+          border-color: var(--accent-secondary);
+          box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
         .selector-dropdown {
           position: absolute;
           top: calc(100% + 4px);
@@ -596,6 +812,28 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
         .delete-item-btn:hover {
           background: rgba(239, 68, 68, 0.15);
           color: var(--accent-danger);
+        }
+
+        .new-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          white-space: nowrap;
+        }
+
+        .new-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--border-hover);
+          color: var(--text-primary);
         }
 
         .save-btn {

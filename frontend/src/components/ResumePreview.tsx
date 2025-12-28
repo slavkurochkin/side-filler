@@ -53,6 +53,10 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
     document.documentElement.style.setProperty('--resume-accent-color', themeColor)
   }, [themeColor])
 
+  const A4_HEIGHT_PX = 1123
+  const PADDING_PX = 96
+  const USABLE_HEIGHT = A4_HEIGHT_PX - PADDING_PX
+
   // Calculate total pages based on A4 dimensions
   useEffect(() => {
     if (!resumeContentRef.current || !resume) return
@@ -60,12 +64,6 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
     const calculatePages = () => {
       const element = resumeContentRef.current
       if (!element) return
-
-      // A4 dimensions at 96 DPI: 794px x 1123px
-      // With padding of 3rem (48px), usable height is ~1123 - 96 = 1027px
-      const A4_HEIGHT_PX = 1123
-      const PADDING_PX = 96
-      const USABLE_HEIGHT = A4_HEIGHT_PX - PADDING_PX
 
       // Get the actual scroll height of the content
       const contentHeight = element.scrollHeight
@@ -93,6 +91,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
       window.removeEventListener('resize', calculatePages)
     }
   }, [resume, resumeContentRef, themeColor])
+
 
   if (!resume) {
     return (
@@ -277,19 +276,16 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
     }
   }
 
+
   // Group sections by title to avoid duplicate section titles
-  const groupedSections = resume.sections?.reduce((acc, section) => {
+  const groupedSections = resume?.sections?.reduce((acc, section) => {
     const title = section.title.toUpperCase()
     if (!acc[title]) {
       acc[title] = []
     }
     acc[title].push(section)
     return acc
-  }, {} as Record<string, typeof resume.sections>)
-
-  const A4_HEIGHT_PX = 1123
-  const PADDING_PX = 96
-  const USABLE_HEIGHT = A4_HEIGHT_PX - PADDING_PX
+  }, {} as Record<string, typeof resume.sections>) || {}
 
   return (
     <div className="resume-preview">
@@ -316,7 +312,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
             </h1>
             <div className="contact-row">
               {(resume.email || apiUrl) && (
-                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Mail size={14} />
                   <span
                     className={apiUrl ? 'editable-field' : ''}
@@ -326,14 +322,14 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                     onBlur={(e) => apiUrl && handleBlur(e, 'email')}
                     onKeyDown={handleKeyDown}
                     title={apiUrl ? (resume.email ? 'Click to edit' : 'Click to add email') : undefined}
-                    style={{ minWidth: '100px', outline: 'none' }}
+                    style={{ outline: 'none' }}
                   >
                     {resume.email || (apiUrl ? 'Add email' : '')}
                   </span>
                 </span>
               )}
               {(resume.phone || apiUrl) && (
-                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Phone size={14} />
                   <span
                     className={apiUrl ? 'editable-field' : ''}
@@ -343,14 +339,14 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                     onBlur={(e) => apiUrl && handleBlur(e, 'phone')}
                     onKeyDown={handleKeyDown}
                     title={apiUrl ? (resume.phone ? 'Click to edit' : 'Click to add phone') : undefined}
-                    style={{ minWidth: '100px', outline: 'none' }}
+                    style={{ outline: 'none' }}
                   >
                     {resume.phone || (apiUrl ? 'Add phone' : '')}
                   </span>
                 </span>
               )}
               {resume.website && (
-                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Globe size={14} />
                   <span
                     className={apiUrl ? 'editable-field' : ''}
@@ -360,14 +356,14 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                     onBlur={(e) => apiUrl && handleBlur(e, 'website')}
                     onKeyDown={handleKeyDown}
                     title={apiUrl ? 'Click to edit' : undefined}
-                    style={{ minWidth: '100px', outline: 'none' }}
+                    style={{ outline: 'none' }}
                   >
                     {resume.website.replace(/^https?:\/\//, '')}
                   </span>
                 </span>
               )}
               {resume.linkedin && (
-                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Linkedin size={14} />
                   <span
                     className={apiUrl ? 'editable-field' : ''}
@@ -377,14 +373,14 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                     onBlur={(e) => apiUrl && handleBlur(e, 'linkedin')}
                     onKeyDown={handleKeyDown}
                     title={apiUrl ? 'Click to edit' : undefined}
-                    style={{ minWidth: '100px', outline: 'none' }}
+                    style={{ outline: 'none' }}
                   >
                     LinkedIn
                   </span>
                 </span>
               )}
               {resume.github && (
-                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Github size={14} />
                   <span
                     className={apiUrl ? 'editable-field' : ''}
@@ -394,7 +390,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                     onBlur={(e) => apiUrl && handleBlur(e, 'github')}
                     onKeyDown={handleKeyDown}
                     title={apiUrl ? 'Click to edit' : undefined}
-                    style={{ minWidth: '100px', outline: 'none' }}
+                    style={{ outline: 'none' }}
                   >
                     GitHub
                   </span>
@@ -543,38 +539,9 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
             </div>
           )}
 
-          {/* Page break indicators and page numbers */}
-          {Array.from({ length: totalPages }).map((_, idx) => {
-            const pageNum = idx + 1
-            const pageTop = idx * USABLE_HEIGHT
-            const isFirstPage = idx === 0
-            const footerTop = pageTop + USABLE_HEIGHT - 35
-            
-            return (
-              <React.Fragment key={pageNum}>
-                {!isFirstPage && (
-                  <div 
-                    className="page-break-indicator"
-                    style={{ top: `${pageTop + PADDING_PX / 2}px` }}
-                  >
-                    <div className="page-break-line"></div>
-                    <span className="page-break-label">Page {pageNum}</span>
-                    <div className="page-break-line"></div>
-                  </div>
-                )}
-                <div 
-                  className="page-footer"
-                  style={{ 
-                    top: `${Math.max(footerTop, isFirstPage ? USABLE_HEIGHT - 35 : footerTop)}px` 
-                  }}
-                >
-                  <span className="page-number">{pageNum}</span>
-                </div>
-              </React.Fragment>
-            )
-          })}
         </motion.div>
       </div>
+
 
       <style>{`
         :root {
@@ -636,7 +603,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
         .contact-item {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
+          gap: 0.25rem;
           color: #64748b;
           font-size: 0.9rem;
         }
@@ -725,76 +692,6 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
           break-before: avoid;
         }
 
-        /* Page break indicators */
-        .page-break-indicator {
-          position: absolute;
-          left: -3rem;
-          right: -3rem;
-          width: calc(100% + 6rem);
-          pointer-events: none;
-          z-index: 10;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0 1rem;
-        }
-
-        .page-break-line {
-          flex: 1;
-          height: 2px;
-          background: linear-gradient(90deg, 
-            transparent 0%, 
-            rgba(99, 102, 241, 0.3) 20%, 
-            rgba(99, 102, 241, 0.5) 50%, 
-            rgba(99, 102, 241, 0.3) 80%, 
-            transparent 100%
-          );
-          border-top: 1px dashed rgba(99, 102, 241, 0.4);
-        }
-
-        .page-break-label {
-          background: rgba(99, 102, 241, 0.15);
-          color: #6366f1;
-          padding: 0.25rem 0.75rem;
-          border-radius: 12px;
-          font-size: 0.7rem;
-          font-weight: 600;
-          border: 1px solid rgba(99, 102, 241, 0.3);
-          white-space: nowrap;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        /* Page numbers */
-        .page-footer {
-          position: absolute;
-          left: -3rem;
-          right: -3rem;
-          width: calc(100% + 6rem);
-          display: flex;
-          justify-content: center;
-          pointer-events: none;
-          z-index: 5;
-        }
-
-        .page-number {
-          background: rgba(255, 255, 255, 0.95);
-          color: #64748b;
-          padding: 0.375rem 0.875rem;
-          border-radius: 14px;
-          font-size: 0.75rem;
-          font-weight: 600;
-          border: 1px solid rgba(0, 0, 0, 0.1);
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Hide page indicators and numbers during export */
-        .resume-paper.exporting .page-break-indicator,
-        .resume-paper.exporting .page-footer {
-          display: none !important;
-          visibility: hidden !important;
-          opacity: 0 !important;
-        }
 
         .section-title {
           font-size: 1.1rem;
