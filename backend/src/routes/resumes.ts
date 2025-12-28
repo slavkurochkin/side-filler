@@ -21,6 +21,13 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
+    // Set cache-control headers to prevent caching
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    
     const resumeResult = await pool.query(
       'SELECT * FROM resumes WHERE id = $1',
       [id]
@@ -103,24 +110,63 @@ router.put('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { name, email, phone, website, linkedin, github, summary } = req.body;
     
-    const result = await pool.query(
-      `UPDATE resumes 
-       SET name = COALESCE($2, name),
-           email = COALESCE($3, email),
-           phone = COALESCE($4, phone),
-           website = COALESCE($5, website),
-           linkedin = COALESCE($6, linkedin),
-           github = COALESCE($7, github),
-           summary = COALESCE($8, summary)
-       WHERE id = $1
-       RETURNING *`,
-      [id, name, email, phone, website, linkedin, github, summary]
-    );
+    // Build dynamic update query only for fields that are provided
+    const updates: string[] = [];
+    const values: any[] = [id];
+    let paramIndex = 2;
+    
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (email !== undefined) {
+      updates.push(`email = $${paramIndex++}`);
+      values.push(email);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${paramIndex++}`);
+      values.push(phone);
+    }
+    if (website !== undefined) {
+      updates.push(`website = $${paramIndex++}`);
+      values.push(website);
+    }
+    if (linkedin !== undefined) {
+      updates.push(`linkedin = $${paramIndex++}`);
+      values.push(linkedin);
+    }
+    if (github !== undefined) {
+      updates.push(`github = $${paramIndex++}`);
+      values.push(github);
+    }
+    if (summary !== undefined) {
+      updates.push(`summary = $${paramIndex++}`);
+      values.push(summary);
+    }
+    
+    if (updates.length === 0) {
+      // No fields to update, just return current resume
+      const currentResult = await pool.query('SELECT * FROM resumes WHERE id = $1', [id]);
+      if (currentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Resume not found' });
+      }
+      return res.json(currentResult.rows[0]);
+    }
+    
+    const query = `UPDATE resumes 
+                   SET ${updates.join(', ')}
+                   WHERE id = $1
+                   RETURNING *`;
+    
+    console.log('Updating resume:', { id, updates, values, query });
+    
+    const result = await pool.query(query, values);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Resume not found' });
     }
     
+    console.log('Resume updated successfully:', result.rows[0]);
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating resume:', error);

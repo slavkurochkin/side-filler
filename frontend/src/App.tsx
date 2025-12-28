@@ -75,11 +75,23 @@ function App() {
 
   const fetchResumeDetails = async (id: string) => {
     try {
-      const response = await fetch(`${API_URL}/resumes/${id}`)
+      // Add cache-busting timestamp to ensure fresh data
+      const response = await fetch(`${API_URL}/resumes/${id}?t=${Date.now()}`, {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to fetch resume: ${response.status}`)
+      }
       const data = await response.json()
+      console.log('Fetched resume data:', data)
       setSelectedResume(data)
     } catch (error) {
       console.error('Failed to fetch resume details:', error)
+      throw error
     }
   }
 
@@ -268,7 +280,13 @@ function App() {
                 transition={{ duration: 0.2 }}
                 style={{ height: '100%' }}
               >
-                <ResumePreview resume={selectedResume} template={template} resumeContentRef={resumeContentRef} />
+                <ResumePreview 
+                  resume={selectedResume} 
+                  template={template} 
+                  resumeContentRef={resumeContentRef}
+                  apiUrl={API_URL}
+                  onUpdate={fetchResumeDetails}
+                />
               </motion.div>
             ) : (
               <motion.div

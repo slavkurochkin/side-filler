@@ -41,12 +41,22 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       const jsPDF = (await import('jspdf')).default
       
       const element = resumeContentRef.current
+      
+      // Hide page indicators and numbers during export
+      element.classList.add('exporting')
+      
+      // Wait a moment for the DOM to update
+      await new Promise(resolve => setTimeout(resolve, 50))
+      
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
       })
+      
+      // Restore page indicators and numbers
+      element.classList.remove('exporting')
       
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
@@ -68,6 +78,10 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       
       pdf.save(`${selectedResume.name || 'resume'}.pdf`)
     } catch (error) {
+      // Make sure to remove the class even if there's an error
+      if (resumeContentRef?.current) {
+        resumeContentRef.current.classList.remove('exporting')
+      }
       console.error('Failed to export PDF:', error)
       alert('Failed to export PDF. Please try again.')
     }

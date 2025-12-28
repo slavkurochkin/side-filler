@@ -10,10 +10,14 @@ interface ResumePreviewProps {
   resume: Resume | null
   template: ResumeTemplate
   resumeContentRef?: React.RefObject<HTMLDivElement>
+  apiUrl?: string
+  onUpdate?: (resumeId: string) => void
 }
 
-export function ResumePreview({ resume, template, resumeContentRef: externalRef }: ResumePreviewProps) {
+export function ResumePreview({ resume, template, resumeContentRef: externalRef, apiUrl, onUpdate }: ResumePreviewProps) {
   const [themeColor, setThemeColor] = useState<string>('#6366f1')
+  const [totalPages, setTotalPages] = useState<number>(1)
+  const [editingField, setEditingField] = useState<string | null>(null)
   const internalRef = useRef<HTMLDivElement>(null)
   const resumeContentRef = externalRef || internalRef
 
@@ -48,6 +52,47 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
   useEffect(() => {
     document.documentElement.style.setProperty('--resume-accent-color', themeColor)
   }, [themeColor])
+
+  // Calculate total pages based on A4 dimensions
+  useEffect(() => {
+    if (!resumeContentRef.current || !resume) return
+
+    const calculatePages = () => {
+      const element = resumeContentRef.current
+      if (!element) return
+
+      // A4 dimensions at 96 DPI: 794px x 1123px
+      // With padding of 3rem (48px), usable height is ~1123 - 96 = 1027px
+      const A4_HEIGHT_PX = 1123
+      const PADDING_PX = 96
+      const USABLE_HEIGHT = A4_HEIGHT_PX - PADDING_PX
+
+      // Get the actual scroll height of the content
+      const contentHeight = element.scrollHeight
+      const pages = Math.max(1, Math.ceil(contentHeight / USABLE_HEIGHT))
+      setTotalPages(pages)
+    }
+
+    // Calculate after a short delay to ensure DOM is rendered
+    const timeoutId = setTimeout(calculatePages, 100)
+    
+    // Use ResizeObserver to recalculate when content changes
+    const resizeObserver = new ResizeObserver(() => {
+      calculatePages()
+    })
+    
+    if (resumeContentRef.current) {
+      resizeObserver.observe(resumeContentRef.current)
+    }
+
+    window.addEventListener('resize', calculatePages)
+
+    return () => {
+      clearTimeout(timeoutId)
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', calculatePages)
+    }
+  }, [resume, resumeContentRef, themeColor])
 
   if (!resume) {
     return (
@@ -89,6 +134,149 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
   }
 
+  // Save field when editing is complete
+  const handleSave = async (field: string, value: string, entryId?: string, bulletId?: string) => {
+    if (!resume || !apiUrl || !onUpdate) {
+      console.log('Missing requirements:', { resume: !!resume, apiUrl, onUpdate: !!onUpdate })
+      return
+    }
+
+    // Don't save if value is empty (unless it was already empty)
+    if (!value.trim()) {
+      console.log('Empty value, skipping save')
+      setEditingField(null)
+      return
+    }
+
+    try {
+      let response
+      let responseData
+      
+      // Check bulletId first, since bullets can have entryId too
+      if (bulletId) {
+        // Update bullet
+        const payload = { content: value.trim() }
+        console.log('Updating bullet:', { bulletId, value: value.trim(), payload })
+        response = await fetch(`${apiUrl}/bullets/${bulletId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          throw new Error(errorData.error || `HTTP ${response.status}`)
+        }
+        
+        responseData = await response.json()
+        console.log('Bullet update response:', responseData)
+        
+      } else if (entryId) {
+        // Update entry field
+        const payload = { [field]: value.trim() }
+        console.log('Updating entry:', { entryId, field, value: value.trim(), payload })
+        response = await fetch(`${apiUrl}/entries/${entryId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          throw new Error(errorData.error || `HTTP ${response.status}`)
+        }
+        
+        responseData = await response.json()
+        console.log('Entry update response:', responseData)
+        
+      } else {
+        // Update resume field
+        const payload = { [field]: value.trim() }
+        console.log('Updating resume:', { resumeId: resume.id, field, value: value.trim(), payload })
+        response = await fetch(`${apiUrl}/resumes/${resume.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          throw new Error(errorData.error || `HTTP ${response.status}`)
+        }
+        
+        responseData = await response.json()
+        console.log('Resume update response:', responseData)
+        
+        // Verify the update was saved
+        if (responseData[field] !== value.trim()) {
+          console.warn('API response value does not match saved value:', {
+            expected: value.trim(),
+            received: responseData[field]
+          })
+        }
+      }
+
+      console.log('Update successful, refreshing resume data...')
+      // Small delay to ensure database commit, then refresh
+      await new Promise(resolve => setTimeout(resolve, 100))
+      // Wait for the refresh to complete
+      await onUpdate(resume.id)
+      console.log('Resume data refreshed')
+    } catch (error) {
+      console.error('Failed to update:', error)
+      alert(`Failed to save changes: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setEditingField(null)
+    }
+  }
+
+  // Handle contentEditable blur - save the value
+  const handleBlur = (e: React.FocusEvent<HTMLElement>, field: string, entryId?: string, bulletId?: string) => {
+    if (!apiUrl) return
+    
+    // Get the current text content from the DOM element
+    const element = e.currentTarget
+    const newValue = element.textContent?.trim() || ''
+    
+    // Get the original value to compare
+    let originalValue = ''
+    if (bulletId) {
+      originalValue = resume?.sections?.flatMap(s => s.entries || [])
+        .find(e => e.bullets?.some(b => b.id === bulletId))
+        ?.bullets?.find(b => b.id === bulletId)?.content || ''
+    } else if (entryId) {
+      const entry = resume?.sections?.flatMap(s => s.entries || [])
+        .find(e => e.id === entryId)
+      originalValue = entry?.[field as keyof typeof entry] as string || ''
+    } else {
+      originalValue = resume?.[field as keyof Resume] as string || ''
+    }
+    
+    const fieldKey = bulletId ? `bullet-${bulletId}` : entryId ? `entry-${entryId}-${field}` : field
+    setEditingField(null)
+    
+    // Only save if value changed
+    if (newValue !== originalValue.trim()) {
+      console.log('Saving changed value:', { field, entryId, bulletId, oldValue: originalValue, newValue })
+      handleSave(field, newValue, entryId, bulletId)
+    }
+  }
+
+  // Handle focus - just track which field is being edited
+  const handleFocus = (field: string, entryId?: string, bulletId?: string) => {
+    if (!apiUrl) return
+    const fieldKey = bulletId ? `bullet-${bulletId}` : entryId ? `entry-${entryId}-${field}` : field
+    setEditingField(fieldKey)
+  }
+
+  // Handle Enter key to blur (save)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      e.currentTarget.blur()
+    }
+  }
+
   // Group sections by title to avoid duplicate section titles
   const groupedSections = resume.sections?.reduce((acc, section) => {
     const title = section.title.toUpperCase()
@@ -98,6 +286,10 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
     acc[title].push(section)
     return acc
   }, {} as Record<string, typeof resume.sections>)
+
+  const A4_HEIGHT_PX = 1123
+  const PADDING_PX = 96
+  const USABLE_HEIGHT = A4_HEIGHT_PX - PADDING_PX
 
   return (
     <div className="resume-preview">
@@ -111,41 +303,116 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
         >
           {/* Header */}
           <header className="resume-header">
-            <h1 className="resume-name">{resume.name || 'Your Name'}</h1>
+            <h1 
+              className="resume-name editable-field"
+              contentEditable={!!apiUrl}
+              suppressContentEditableWarning
+              onFocus={() => handleFocus('name')}
+              onBlur={(e) => apiUrl && handleBlur(e, 'name')}
+              onKeyDown={handleKeyDown}
+              title={apiUrl ? 'Click to edit' : undefined}
+            >
+              {resume.name || 'Your Name'}
+            </h1>
             <div className="contact-row">
-              {resume.email && (
-                <span className="contact-item">
+              {(resume.email || apiUrl) && (
+                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Mail size={14} />
-                  {resume.email}
+                  <span
+                    className={apiUrl ? 'editable-field' : ''}
+                    contentEditable={!!apiUrl}
+                    suppressContentEditableWarning
+                    onFocus={() => handleFocus('email')}
+                    onBlur={(e) => apiUrl && handleBlur(e, 'email')}
+                    onKeyDown={handleKeyDown}
+                    title={apiUrl ? (resume.email ? 'Click to edit' : 'Click to add email') : undefined}
+                    style={{ minWidth: '100px', outline: 'none' }}
+                  >
+                    {resume.email || (apiUrl ? 'Add email' : '')}
+                  </span>
                 </span>
               )}
-              {resume.phone && (
-                <span className="contact-item">
+              {(resume.phone || apiUrl) && (
+                <span className="contact-item" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Phone size={14} />
-                  {resume.phone}
+                  <span
+                    className={apiUrl ? 'editable-field' : ''}
+                    contentEditable={!!apiUrl}
+                    suppressContentEditableWarning
+                    onFocus={() => handleFocus('phone')}
+                    onBlur={(e) => apiUrl && handleBlur(e, 'phone')}
+                    onKeyDown={handleKeyDown}
+                    title={apiUrl ? (resume.phone ? 'Click to edit' : 'Click to add phone') : undefined}
+                    style={{ minWidth: '100px', outline: 'none' }}
+                  >
+                    {resume.phone || (apiUrl ? 'Add phone' : '')}
+                  </span>
                 </span>
               )}
               {resume.website && (
-                <a className="contact-item contact-link" href={resume.website} target="_blank" rel="noopener noreferrer">
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Globe size={14} />
-                  {resume.website.replace(/^https?:\/\//, '')}
-                </a>
+                  <span
+                    className={apiUrl ? 'editable-field' : ''}
+                    contentEditable={!!apiUrl}
+                    suppressContentEditableWarning
+                    onFocus={() => handleFocus('website')}
+                    onBlur={(e) => apiUrl && handleBlur(e, 'website')}
+                    onKeyDown={handleKeyDown}
+                    title={apiUrl ? 'Click to edit' : undefined}
+                    style={{ minWidth: '100px', outline: 'none' }}
+                  >
+                    {resume.website.replace(/^https?:\/\//, '')}
+                  </span>
+                </span>
               )}
               {resume.linkedin && (
-                <a className="contact-item contact-link" href={resume.linkedin} target="_blank" rel="noopener noreferrer">
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Linkedin size={14} />
-                  LinkedIn
-                </a>
+                  <span
+                    className={apiUrl ? 'editable-field' : ''}
+                    contentEditable={!!apiUrl}
+                    suppressContentEditableWarning
+                    onFocus={() => handleFocus('linkedin')}
+                    onBlur={(e) => apiUrl && handleBlur(e, 'linkedin')}
+                    onKeyDown={handleKeyDown}
+                    title={apiUrl ? 'Click to edit' : undefined}
+                    style={{ minWidth: '100px', outline: 'none' }}
+                  >
+                    LinkedIn
+                  </span>
+                </span>
               )}
               {resume.github && (
-                <a className="contact-item contact-link" href={resume.github} target="_blank" rel="noopener noreferrer">
+                <span className="contact-item contact-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Github size={14} />
-                  GitHub
-                </a>
+                  <span
+                    className={apiUrl ? 'editable-field' : ''}
+                    contentEditable={!!apiUrl}
+                    suppressContentEditableWarning
+                    onFocus={() => handleFocus('github')}
+                    onBlur={(e) => apiUrl && handleBlur(e, 'github')}
+                    onKeyDown={handleKeyDown}
+                    title={apiUrl ? 'Click to edit' : undefined}
+                    style={{ minWidth: '100px', outline: 'none' }}
+                  >
+                    GitHub
+                  </span>
+                </span>
               )}
             </div>
             {resume.summary && (
-              <p className="resume-summary">{resume.summary}</p>
+              <p 
+                className="resume-summary editable-field"
+                contentEditable={!!apiUrl}
+                suppressContentEditableWarning
+                onFocus={() => handleFocus('summary')}
+                onBlur={(e) => apiUrl && handleBlur(e, 'summary')}
+                onKeyDown={handleKeyDown}
+                title={apiUrl ? 'Click to edit' : undefined}
+              >
+                {resume.summary}
+              </p>
             )}
           </header>
 
@@ -184,9 +451,29 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
                         <div key={entry.id} className="entry">
                           <div className="entry-header">
                             <div className="entry-main">
-                              <h3 className="entry-title">{entry.title}</h3>
+                              <h3 
+                                className="entry-title editable-field"
+                                contentEditable={!!apiUrl}
+                                suppressContentEditableWarning
+                                onFocus={() => handleFocus('title', entry.id)}
+                                onBlur={(e) => apiUrl && handleBlur(e, 'title', entry.id)}
+                                onKeyDown={handleKeyDown}
+                                title={apiUrl ? 'Click to edit' : undefined}
+                              >
+                                {entry.title}
+                              </h3>
                               {entry.subtitle && (
-                                <span className="entry-subtitle">{entry.subtitle}</span>
+                                <span 
+                                  className="entry-subtitle editable-field"
+                                  contentEditable={!!apiUrl}
+                                  suppressContentEditableWarning
+                                  onFocus={() => handleFocus('subtitle', entry.id)}
+                                  onBlur={(e) => apiUrl && handleBlur(e, 'subtitle', entry.id)}
+                                  onKeyDown={handleKeyDown}
+                                  title={apiUrl ? 'Click to edit' : undefined}
+                                >
+                                  {entry.subtitle}
+                                </span>
                               )}
                             </div>
                             <div className="entry-meta">
@@ -208,13 +495,34 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
                           </div>
                           
                           {entry.description && (
-                            <p className="entry-description">{entry.description}</p>
+                            <p 
+                              className="entry-description editable-field"
+                              contentEditable={!!apiUrl}
+                              suppressContentEditableWarning
+                              onFocus={() => handleFocus('description', entry.id)}
+                              onBlur={(e) => apiUrl && handleBlur(e, 'description', entry.id)}
+                              onKeyDown={handleKeyDown}
+                              title={apiUrl ? 'Click to edit' : undefined}
+                            >
+                              {entry.description}
+                            </p>
                           )}
                           
                           {entry.bullets && entry.bullets.length > 0 && (
                             <ul className="entry-bullets">
                               {entry.bullets.map((bullet) => (
-                                <li key={bullet.id}>{bullet.content}</li>
+                                <li 
+                                  key={bullet.id}
+                                  className="editable-field"
+                                  contentEditable={!!apiUrl}
+                                  suppressContentEditableWarning
+                                  onFocus={() => handleFocus('content', entry.id, bullet.id)}
+                                  onBlur={(e) => apiUrl && handleBlur(e, 'content', entry.id, bullet.id)}
+                                  onKeyDown={handleKeyDown}
+                                  title={apiUrl ? 'Click to edit' : undefined}
+                                >
+                                  {bullet.content}
+                                </li>
                               ))}
                             </ul>
                           )}
@@ -234,6 +542,37 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
               <p>Add sections to your resume using the editor on the left</p>
             </div>
           )}
+
+          {/* Page break indicators and page numbers */}
+          {Array.from({ length: totalPages }).map((_, idx) => {
+            const pageNum = idx + 1
+            const pageTop = idx * USABLE_HEIGHT
+            const isFirstPage = idx === 0
+            const footerTop = pageTop + USABLE_HEIGHT - 35
+            
+            return (
+              <React.Fragment key={pageNum}>
+                {!isFirstPage && (
+                  <div 
+                    className="page-break-indicator"
+                    style={{ top: `${pageTop + PADDING_PX / 2}px` }}
+                  >
+                    <div className="page-break-line"></div>
+                    <span className="page-break-label">Page {pageNum}</span>
+                    <div className="page-break-line"></div>
+                  </div>
+                )}
+                <div 
+                  className="page-footer"
+                  style={{ 
+                    top: `${Math.max(footerTop, isFirstPage ? USABLE_HEIGHT - 35 : footerTop)}px` 
+                  }}
+                >
+                  <span className="page-number">{pageNum}</span>
+                </div>
+              </React.Fragment>
+            )
+          })}
         </motion.div>
       </div>
 
@@ -253,6 +592,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
         .preview-container {
           max-width: 850px;
           margin: 0 auto;
+          position: relative;
         }
 
         .resume-paper {
@@ -264,6 +604,12 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
             0 0 0 1px rgba(255, 255, 255, 0.1);
           padding: 3rem;
           min-height: 100%;
+          position: relative;
+          width: 210mm; /* A4 width */
+          min-height: 297mm; /* A4 height */
+          margin: 0 auto;
+          /* Ensure proper page sizing */
+          box-sizing: border-box;
         }
 
         .resume-header {
@@ -324,6 +670,130 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
 
         .resume-section {
           page-break-inside: avoid;
+          break-inside: avoid;
+        }
+
+        /* Prevent orphan/widow lines */
+        .entry-bullets {
+          orphans: 3;
+          widows: 3;
+          page-break-inside: auto;
+        }
+
+        .entry-bullets li {
+          orphans: 3;
+          widows: 3;
+          page-break-inside: avoid;
+          break-inside: avoid;
+          /* Prevent single bullet points from being isolated on a page */
+          min-height: 1.5em;
+        }
+
+        /* Don't break bullet points themselves */
+        .entry-bullets li::before {
+          page-break-after: avoid;
+        }
+
+        .entry-description,
+        .resume-summary {
+          orphans: 3;
+          widows: 3;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+
+        /* Keep entries together when possible, but allow breaks if necessary */
+        .entry {
+          page-break-inside: avoid;
+          break-inside: avoid;
+          orphans: 2;
+          widows: 2;
+          /* If an entry must break, try to keep at least 2 lines together */
+          page-break-after: auto;
+        }
+
+        /* Don't leave just the title on one page */
+        .entry-header {
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+
+        /* Try to keep at least 2 bullets with the entry header */
+        .entry-header + .entry-description,
+        .entry-header ~ .entry-bullets {
+          page-break-before: avoid;
+          break-before: avoid;
+        }
+
+        /* Page break indicators */
+        .page-break-indicator {
+          position: absolute;
+          left: -3rem;
+          right: -3rem;
+          width: calc(100% + 6rem);
+          pointer-events: none;
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 0 1rem;
+        }
+
+        .page-break-line {
+          flex: 1;
+          height: 2px;
+          background: linear-gradient(90deg, 
+            transparent 0%, 
+            rgba(99, 102, 241, 0.3) 20%, 
+            rgba(99, 102, 241, 0.5) 50%, 
+            rgba(99, 102, 241, 0.3) 80%, 
+            transparent 100%
+          );
+          border-top: 1px dashed rgba(99, 102, 241, 0.4);
+        }
+
+        .page-break-label {
+          background: rgba(99, 102, 241, 0.15);
+          color: #6366f1;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          border: 1px solid rgba(99, 102, 241, 0.3);
+          white-space: nowrap;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        /* Page numbers */
+        .page-footer {
+          position: absolute;
+          left: -3rem;
+          right: -3rem;
+          width: calc(100% + 6rem);
+          display: flex;
+          justify-content: center;
+          pointer-events: none;
+          z-index: 5;
+        }
+
+        .page-number {
+          background: rgba(255, 255, 255, 0.95);
+          color: #64748b;
+          padding: 0.375rem 0.875rem;
+          border-radius: 14px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Hide page indicators and numbers during export */
+        .resume-paper.exporting .page-break-indicator,
+        .resume-paper.exporting .page-footer {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
         }
 
         .section-title {
@@ -425,6 +895,46 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef 
           height: 5px;
           background: var(--resume-accent-color);
           border-radius: 50%;
+        }
+
+        /* Editable field styles */
+        .editable-field {
+          position: relative;
+          transition: all 150ms ease;
+          outline: none;
+        }
+
+        .editable-field[contenteditable="true"]:hover {
+          background: rgba(99, 102, 241, 0.05);
+          border-radius: 4px;
+          cursor: text;
+        }
+
+        .editable-field[contenteditable="true"]:focus {
+          background: rgba(99, 102, 241, 0.1);
+          border-radius: 4px;
+          outline: 2px solid rgba(99, 102, 241, 0.3);
+          outline-offset: 2px;
+        }
+
+        .editable-field[contenteditable="true"]:empty::before {
+          content: attr(title);
+          color: #94a3b8;
+          font-style: italic;
+          opacity: 0.5;
+        }
+
+        .editable-field[contenteditable="true"]:empty:focus::before {
+          content: '';
+        }
+
+        /* Prevent link navigation when editing */
+        .contact-link.editable-field[contenteditable="true"] {
+          pointer-events: auto;
+        }
+
+        .contact-link.editable-field[contenteditable="true"]:focus {
+          pointer-events: auto;
         }
 
         .skills-badges {
