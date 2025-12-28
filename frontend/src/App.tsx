@@ -51,6 +51,13 @@ function App() {
     }
   }, [selectedResumeId])
 
+  // Clear job description when switching to preview mode
+  useEffect(() => {
+    if (viewMode === 'preview') {
+      setCurrentJobDescription(null)
+    }
+  }, [viewMode])
+
   const fetchResumes = async () => {
     try {
       const response = await fetch(`${API_URL}/resumes`)
@@ -259,6 +266,7 @@ function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
+                style={{ height: '100%' }}
               >
                 <ResumePreview resume={selectedResume} template={template} resumeContentRef={resumeContentRef} />
               </motion.div>

@@ -23,7 +23,9 @@ interface HeaderProps {
 
 export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const exportDropdownRef = useRef<HTMLDivElement>(null)
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return ''
@@ -246,6 +248,9 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false)
       }
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setIsExportDropdownOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -324,34 +329,61 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
 
       <div className="header-right">
         {selectedResume && (
-          <div className="export-buttons-header">
+          <div className="export-dropdown-container" ref={exportDropdownRef}>
             <button 
-              className="export-btn-header"
-              onClick={exportToPDF}
-              title="Export to PDF"
-              disabled={!resumeContentRef?.current || viewMode !== 'preview'}
-            >
-              <FileTextIcon size={16} />
-              <span>PDF</span>
-            </button>
-            <button 
-              className="export-btn-header"
-              onClick={exportToWord}
-              title="Export to Word"
+              className="export-dropdown-btn"
+              onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
               disabled={viewMode !== 'preview'}
-            >
-              <File size={16} />
-              <span>Word</span>
-            </button>
-            <button 
-              className="export-btn-header"
-              onClick={exportToGoogleDocs}
-              title="Copy for Google Docs"
-              disabled={viewMode !== 'preview'}
+              title="Export resume"
             >
               <Download size={16} />
-              <span>Google Docs</span>
+              <span>Export</span>
+              <ChevronDown 
+                size={16} 
+                className={`export-chevron ${isExportDropdownOpen ? 'open' : ''}`}
+              />
             </button>
+
+            {isExportDropdownOpen && (
+              <motion.div 
+                className="export-dropdown"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <button 
+                  className="export-dropdown-item"
+                  onClick={() => {
+                    exportToPDF()
+                    setIsExportDropdownOpen(false)
+                  }}
+                  disabled={!resumeContentRef?.current}
+                >
+                  <FileTextIcon size={16} />
+                  <span>Export to PDF</span>
+                </button>
+                <button 
+                  className="export-dropdown-item"
+                  onClick={() => {
+                    exportToWord()
+                    setIsExportDropdownOpen(false)
+                  }}
+                >
+                  <File size={16} />
+                  <span>Export to Word</span>
+                </button>
+                <button 
+                  className="export-dropdown-item"
+                  onClick={() => {
+                    exportToGoogleDocs()
+                    setIsExportDropdownOpen(false)
+                  }}
+                >
+                  <Download size={16} />
+                  <span>Copy for Google Docs</span>
+                </button>
+              </motion.div>
+            )}
           </div>
         )}
         <div className="view-mode-toggle">
@@ -432,13 +464,13 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           gap: 10px;
         }
 
-        .export-buttons-header {
+        .export-dropdown-container {
+          position: relative;
           display: flex;
           align-items: center;
-          gap: 6px;
         }
 
-        .export-btn-header {
+        .export-dropdown-btn {
           display: flex;
           align-items: center;
           gap: 6px;
@@ -451,20 +483,74 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           font-weight: 500;
           cursor: pointer;
           transition: all 150ms ease;
+          height: 36px;
         }
 
-        .export-btn-header:hover:not(:disabled) {
+        .export-dropdown-btn:hover:not(:disabled) {
           background: var(--bg-hover);
           border-color: var(--border-hover);
           color: var(--accent-primary);
         }
 
-        .export-btn-header:disabled {
+        .export-dropdown-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
 
-        .export-btn-header svg {
+        .export-dropdown-btn svg {
+          flex-shrink: 0;
+        }
+
+        .export-chevron {
+          color: var(--text-muted);
+          flex-shrink: 0;
+          transition: transform 150ms ease;
+        }
+
+        .export-chevron.open {
+          transform: rotate(180deg);
+        }
+
+        .export-dropdown {
+          position: absolute;
+          top: calc(100% + 4px);
+          right: 0;
+          min-width: 200px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          box-shadow: var(--shadow-lg);
+          padding: 4px;
+          z-index: 1000;
+        }
+
+        .export-dropdown-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 6px;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 150ms ease;
+          text-align: left;
+          font-size: 0.875rem;
+          background: transparent;
+          border: none;
+        }
+
+        .export-dropdown-item:hover:not(:disabled) {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .export-dropdown-item:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .export-dropdown-item svg {
           flex-shrink: 0;
         }
 
