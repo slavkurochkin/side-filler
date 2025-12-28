@@ -67,10 +67,12 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
 
   const saveEdit = async (field: string) => {
     try {
+      // Convert empty strings to null for optional fields like title
+      const value = editValue.trim() === '' && field === 'title' ? null : editValue.trim()
       await fetch(`${apiUrl}/resumes/${resume.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: editValue })
+        body: JSON.stringify({ [field]: value })
       })
       setEditingField(null)
       onUpdate(resume.id)
@@ -139,6 +141,29 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
             <User size={28} />
           </div>
           <div className="profile-info">
+            {editingField === 'title' ? (
+              <div className="edit-inline">
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  placeholder="Resume title"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && saveEdit('title')}
+                />
+                <button onClick={() => saveEdit('title')}><Save size={14} /></button>
+                <button onClick={() => setEditingField(null)}><X size={14} /></button>
+              </div>
+            ) : (
+              <h2 
+                className="profile-name"
+                onClick={() => startEdit('title', resume.title || '')}
+                title="Click to edit resume title"
+              >
+                {(resume.title && resume.title.trim()) || 'Untitled Resume'}
+                <Edit3 size={14} className="edit-icon" />
+              </h2>
+            )}
             {editingField === 'name' ? (
               <div className="edit-inline">
                 <input
@@ -152,13 +177,14 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                 <button onClick={() => setEditingField(null)}><X size={14} /></button>
               </div>
             ) : (
-              <h2 
-                className="profile-name"
+              <div 
+                className="profile-name-secondary"
                 onClick={() => startEdit('name', resume.name)}
+                title="Click to edit applicant name"
               >
                 {resume.name}
-                <Edit3 size={14} className="edit-icon" />
-              </h2>
+                <Edit3 size={12} className="edit-icon" />
+              </div>
             )}
             <div className="contact-info">
               <span 
@@ -407,6 +433,17 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           gap: var(--space-sm);
         }
 
+        .profile-name-secondary {
+          font-size: 0.95rem;
+          font-weight: 400;
+          color: var(--text-secondary);
+          margin-bottom: var(--space-xs);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+        }
+
         .edit-icon {
           opacity: 0;
           color: var(--text-muted);
@@ -414,6 +451,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
         }
 
         .profile-name:hover .edit-icon,
+        .profile-name-secondary:hover .edit-icon,
         .summary:hover .edit-icon,
         .contact-item:hover .edit-icon {
           opacity: 1;

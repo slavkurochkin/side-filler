@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { FileText, X } from 'lucide-react'
 import { ResumePanel } from './components/ResumePanel'
 import { ResumePreview, ResumeTemplate } from './components/ResumePreview'
 import { JobDescription } from './components/JobDescription'
@@ -24,6 +25,9 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('preview')
   const [currentJobDescription, setCurrentJobDescription] = useState<string | null>(null)
   const resumeContentRef = useRef<HTMLDivElement>(null)
+  const [showTitleModal, setShowTitleModal] = useState(false)
+  const [titleInput, setTitleInput] = useState('')
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
 
   // Load template from localStorage
@@ -95,7 +99,14 @@ function App() {
     }
   }
 
-  const handleCreateResume = async () => {
+  const handleCreateResume = () => {
+    setTitleInput('')
+    setShowTitleModal(true)
+  }
+
+  const handleTitleSubmit = async () => {
+    if (!titleInput.trim()) return
+    
     try {
       const settings = loadSettings()
       const response = await fetch(`${API_URL}/resumes`, {
@@ -103,6 +114,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: settings.defaultName || 'New Resume',
+          title: titleInput.trim(),
           email: settings.defaultEmail || '',
           phone: settings.defaultPhone || '',
           website: settings.defaultWebsite || '',
@@ -114,10 +126,23 @@ function App() {
       const newResume = await response.json()
       setResumes([newResume, ...resumes])
       setSelectedResumeId(newResume.id)
+      setShowTitleModal(false)
+      setTitleInput('')
     } catch (error) {
       console.error('Failed to create resume:', error)
     }
   }
+
+  const handleTitleCancel = () => {
+    setShowTitleModal(false)
+    setTitleInput('')
+  }
+
+  useEffect(() => {
+    if (showTitleModal && titleInputRef.current) {
+      titleInputRef.current.focus()
+    }
+  }, [showTitleModal])
 
   const handleDeleteResume = async (id: string) => {
     try {
@@ -233,6 +258,72 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSave={setUserSettings}
       />
+
+      <AnimatePresence>
+        {showTitleModal && (
+          <motion.div
+            className="title-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={handleTitleCancel}
+          >
+            <motion.div
+              className="title-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="title-modal-header">
+                <div className="title-modal-title">
+                  <FileText size={20} />
+                  <h2>Create New Resume</h2>
+                </div>
+                <button className="title-modal-close" onClick={handleTitleCancel}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="title-modal-content">
+                <label htmlFor="resume-title-input">Resume Title</label>
+                <p className="title-modal-description">
+                  Give your resume a unique title to easily identify it in the dropdown
+                </p>
+                <input
+                  id="resume-title-input"
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTitleSubmit()
+                    } else if (e.key === 'Escape') {
+                      handleTitleCancel()
+                    }
+                  }}
+                  placeholder="e.g., Software Engineer Resume, Marketing Manager CV"
+                  autoFocus
+                />
+              </div>
+
+              <div className="title-modal-footer">
+                <button className="btn-cancel" onClick={handleTitleCancel}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn-create" 
+                  onClick={handleTitleSubmit}
+                  disabled={!titleInput.trim()}
+                >
+                  Create Resume
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       <main 
         id="main-container"
@@ -370,6 +461,162 @@ function App() {
           height: 64px;
           background: var(--accent-primary);
           box-shadow: 0 0 12px var(--accent-glow);
+        }
+
+        .title-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          padding: 20px;
+        }
+
+        .title-modal {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 480px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          display: flex;
+          flex-direction: column;
+        }
+
+        .title-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .title-modal-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .title-modal-title h2 {
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .title-modal-title svg {
+          color: var(--accent-primary);
+          flex-shrink: 0;
+        }
+
+        .title-modal-close {
+          padding: 8px;
+          border-radius: 8px;
+          color: var(--text-muted);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all 150ms ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .title-modal-close:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .title-modal-content {
+          padding: 24px;
+        }
+
+        .title-modal-content label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
+        }
+
+        .title-modal-description {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 16px;
+          line-height: 1.5;
+        }
+
+        .title-modal-content input {
+          width: 100%;
+          padding: 12px 14px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+          transition: all 150ms ease;
+          font-family: inherit;
+        }
+
+        .title-modal-content input:focus {
+          outline: none;
+          border-color: var(--accent-primary);
+          box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .title-modal-content input::placeholder {
+          color: var(--text-muted);
+        }
+
+        .title-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          padding: 16px 24px;
+          border-top: 1px solid var(--border-subtle);
+        }
+
+        .btn-cancel,
+        .btn-create {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 150ms ease;
+          border: none;
+          font-family: inherit;
+        }
+
+        .btn-cancel {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .btn-cancel:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .btn-create {
+          background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+          color: white;
+          box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-create:hover:not(:disabled) {
+          box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-create:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

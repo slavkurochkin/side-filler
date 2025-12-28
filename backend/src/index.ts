@@ -95,6 +95,39 @@ async function ensureSettingsTable() {
   }
 }
 
+// Auto-migration: Check and add title column to resumes table if it doesn't exist
+async function ensureResumeTitleColumn() {
+  try {
+    const result = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'resumes' 
+        AND column_name = 'title'
+      )
+    `);
+    
+    if (!result.rows[0].exists) {
+      console.log('📝 Adding title column to resumes table...');
+      
+      await pool.query(`
+        ALTER TABLE resumes ADD COLUMN title VARCHAR(255)
+      `);
+      
+      // Set default title to name for existing resumes
+      await pool.query(`
+        UPDATE resumes SET title = name WHERE title IS NULL
+      `);
+      
+      console.log('✅ title column added to resumes table successfully');
+    } else {
+      console.log('✅ title column already exists in resumes table');
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring resume title column:', error);
+    // Don't throw - allow server to start even if migration fails
+  }
+}
+
 // Auto-migration: Check and create job_descriptions table if it doesn't exist
 async function ensureJobDescriptionsTable() {
   try {
@@ -209,9 +242,12 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Run migrations on startup
-ensureSettingsTable();
-ensureJobDescriptionsTable();
+// Run migrations on startup (await them to ensure they complete)
+(async () => {
+  await ensureSettingsTable();
+  await ensureResumeTitleColumn();
+  await ensureJobDescriptionsTable();
+})();
 
 // Health check
 app.get('/health', async (req, res) => {

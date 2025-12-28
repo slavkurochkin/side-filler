@@ -28,6 +28,7 @@ export interface Section {
 export interface Resume {
   id: string
   name: string
+  title?: string
   email?: string
   phone?: string
   website?: string

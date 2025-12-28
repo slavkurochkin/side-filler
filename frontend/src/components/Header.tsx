@@ -286,7 +286,7 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           className="resume-selector"
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
         >
-          <span className="selector-text">{selectedResume?.name || 'Select Resume'}</span>
+          <span className="selector-text">{(selectedResume?.title && selectedResume.title.trim()) || selectedResume?.name || 'Select Resume'}</span>
           <ChevronDown 
             size={16} 
             className={`selector-chevron ${isDropdownOpen ? 'open' : ''}`}
@@ -310,13 +310,14 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
                   }}
                 >
                   <FileText size={14} />
-                  <span>{resume.name}</span>
+                  <span>{(resume.title && resume.title.trim()) || resume.name}</span>
                 </button>
                 <button
                   className="delete-btn"
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (confirm(`Delete "${resume.name}"?`)) {
+                    const displayName = (resume.title && resume.title.trim()) || resume.name
+                    if (confirm(`Delete "${displayName}"?`)) {
                       onDeleteResume(resume.id)
                     }
                   }}

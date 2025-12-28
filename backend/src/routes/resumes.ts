@@ -88,13 +88,13 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Create resume
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, email, phone, website, linkedin, github, summary } = req.body;
+    const { name, title, email, phone, website, linkedin, github, summary } = req.body;
     
     const result = await pool.query(
-      `INSERT INTO resumes (name, email, phone, website, linkedin, github, summary)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO resumes (name, title, email, phone, website, linkedin, github, summary)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [name, email, phone, website, linkedin, github, summary]
+      [name, title, email, phone, website, linkedin, github, summary]
     );
     
     res.status(201).json(result.rows[0]);
@@ -108,7 +108,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, website, linkedin, github, summary } = req.body;
+    const { name, title, email, phone, website, linkedin, github, summary } = req.body;
     
     // Build dynamic update query only for fields that are provided
     const updates: string[] = [];
@@ -118,6 +118,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (name !== undefined) {
       updates.push(`name = $${paramIndex++}`);
       values.push(name);
+    }
+    if (title !== undefined) {
+      updates.push(`title = $${paramIndex++}`);
+      // Convert empty string to null
+      values.push(title === '' ? null : title);
     }
     if (email !== undefined) {
       updates.push(`email = $${paramIndex++}`);
@@ -170,7 +175,18 @@ router.put('/:id', async (req: Request, res: Response) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating resume:', error);
-    res.status(500).json({ error: 'Failed to update resume' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorDetails = error instanceof Error ? error.stack : String(error);
+    console.error('Error details:', errorDetails);
+    console.error('Request body:', req.body);
+    console.error('Resume ID:', req.params.id);
+    
+    // Include the actual error message in the response for debugging
+    res.status(500).json({ 
+      error: 'Failed to update resume',
+      message: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? errorDetails : undefined
+    });
   }
 });
 
