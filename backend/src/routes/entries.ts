@@ -49,11 +49,21 @@ router.post('/', async (req: Request, res: Response) => {
       sort_order 
     } = req.body;
     
+    // If sort_order is not provided, calculate it to be at the end of the section
+    let finalSortOrder = sort_order;
+    if (finalSortOrder === undefined || finalSortOrder === null) {
+      const maxResult = await pool.query(
+        'SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM entries WHERE section_id = $1',
+        [section_id]
+      );
+      finalSortOrder = (maxResult.rows[0].max_sort || -1) + 1;
+    }
+    
     const result = await pool.query(
       `INSERT INTO entries (section_id, title, subtitle, location, start_date, end_date, is_current, description, sort_order)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [section_id, title, subtitle, location, start_date, end_date, is_current || false, description, sort_order || 0]
+      [section_id, title, subtitle, location, start_date, end_date, is_current || false, description, finalSortOrder]
     );
     
     res.status(201).json(result.rows[0]);

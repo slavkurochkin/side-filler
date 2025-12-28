@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, Mail, Phone, FileText, Plus, ChevronDown, ChevronRight,
   Briefcase, GraduationCap, FolderKanban, Sparkles, Edit3, Trash2, Save, X,
-  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp, Loader2
+  Globe, Linkedin, Github, Copy, Check, ChevronsDown, ChevronsUp, Loader2, GripVertical
 } from 'lucide-react'
 import { Resume, Section, Entry } from '../types'
 
@@ -26,6 +26,8 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null)
+  const [dragOverSectionId, setDragOverSectionId] = useState<string | null>(null)
 
   if (!resume) {
     return (
@@ -89,8 +91,8 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
         body: JSON.stringify({
           resume_id: resume.id,
           section_type: type,
-          title: type.charAt(0).toUpperCase() + type.slice(1),
-          sort_order: (resume.sections?.length || 0)
+          title: type.charAt(0).toUpperCase() + type.slice(1)
+          // Don't specify sort_order - let the backend calculate it to group by type
         })
       })
       onUpdate(resume.id)
@@ -101,14 +103,18 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
 
   const addEntry = async (sectionId: string) => {
     try {
+      // Find the section to get its current entries count
+      const section = resume.sections?.find(s => s.id === sectionId)
+      const currentEntriesCount = section?.entries?.length || 0
+      
       await fetch(`${apiUrl}/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           section_id: sectionId,
           title: 'New Entry',
-          subtitle: '',
-          sort_order: 0
+          subtitle: ''
+          // Don't specify sort_order - let the backend calculate it to be at the end
         })
       })
       onUpdate(resume.id)
@@ -131,6 +137,68 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
     if (!dateStr) return ''
     const date = new Date(dateStr)
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }
+
+  const handleDragStart = (e: React.DragEvent, sectionId: string) => {
+    setDraggedSectionId(sectionId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', sectionId)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedSectionId(null)
+    setDragOverSectionId(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent, sectionId: string) => {
+    e.preventDefault()
+    if (draggedSectionId && draggedSectionId !== sectionId) {
+      setDragOverSectionId(sectionId)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverSectionId(null)
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetSectionId: string) => {
+    e.preventDefault()
+    setDragOverSectionId(null)
+
+    if (!draggedSectionId || draggedSectionId === targetSectionId || !resume.sections) {
+      setDraggedSectionId(null)
+      return
+    }
+
+    const sections = [...resume.sections]
+    const draggedIndex = sections.findIndex(s => s.id === draggedSectionId)
+    const targetIndex = sections.findIndex(s => s.id === targetSectionId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedSectionId(null)
+      return
+    }
+
+    // Remove dragged section and insert at target position
+    const [draggedSection] = sections.splice(draggedIndex, 1)
+    sections.splice(targetIndex, 0, draggedSection)
+
+    // Update sort_order for all affected sections
+    try {
+      const updatePromises = sections.map((section, index) =>
+        fetch(`${apiUrl}/sections/${section.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sort_order: index })
+        })
+      )
+      await Promise.all(updatePromises)
+      onUpdate(resume.id)
+    } catch (error) {
+      console.error('Failed to reorder sections:', error)
+    }
+
+    setDraggedSectionId(null)
   }
 
   return (
@@ -346,6 +414,13 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
               apiUrl={apiUrl}
               formatDate={formatDate}
               jobDescription={jobDescription}
+              isDragging={draggedSectionId === section.id}
+              isDragOver={dragOverSectionId === section.id}
+              onDragStart={(e) => handleDragStart(e, section.id)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => handleDragOver(e, section.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, section.id)}
             />
           ))}
         </AnimatePresence>
@@ -671,6 +746,13 @@ interface SectionCardProps {
   apiUrl: string
   formatDate: (date?: string) => string
   jobDescription?: string | null
+  isDragging?: boolean
+  isDragOver?: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragLeave: () => void
+  onDrop: (e: React.DragEvent) => void
 }
 
 function SectionCard({ 
@@ -682,20 +764,40 @@ function SectionCard({
   onUpdate,
   apiUrl,
   formatDate,
-  jobDescription
+  jobDescription,
+  isDragging = false,
+  isDragOver = false,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop
 }: SectionCardProps) {
   const Icon = sectionIcons[section.section_type] || FileText
 
   return (
     <motion.div 
-      className="section-card"
+      className={`section-card ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       layout
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
       <div className="section-header" onClick={onToggle}>
         <div className="section-title">
+          <div 
+            className="drag-handle" 
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={16} />
+          </div>
           <div className="section-icon">
             <Icon size={16} />
           </div>
@@ -745,6 +847,19 @@ function SectionCard({
           border-radius: var(--radius-lg);
           margin-bottom: var(--space-md);
           overflow: hidden;
+          cursor: move;
+          transition: all var(--transition-fast);
+        }
+
+        .section-card.dragging {
+          opacity: 0.5;
+          cursor: grabbing;
+        }
+
+        .section-card.drag-over {
+          border-color: var(--accent-primary);
+          border-width: 2px;
+          box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
         .section-header {
@@ -764,6 +879,32 @@ function SectionCard({
           display: flex;
           align-items: center;
           gap: var(--space-sm);
+          flex: 1;
+        }
+
+        .drag-handle {
+          display: flex;
+          align-items: center;
+          color: var(--text-muted);
+          cursor: grab;
+          padding: 4px;
+          margin: -4px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+          opacity: 0;
+        }
+
+        .section-card:hover .drag-handle {
+          opacity: 1;
+        }
+
+        .drag-handle:active {
+          cursor: grabbing;
+        }
+
+        .drag-handle:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
         }
 
         .section-icon {

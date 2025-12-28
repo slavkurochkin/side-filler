@@ -40,6 +40,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     const resume = resumeResult.rows[0];
     
     // Get sections with entries and bullets
+    // Order by sort_order only - user controls order via drag-and-drop
     const sectionsResult = await pool.query(
       `SELECT s.*, 
         COALESCE(

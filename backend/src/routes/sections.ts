@@ -8,6 +8,7 @@ router.get('/resume/:resumeId', async (req: Request, res: Response) => {
   try {
     const { resumeId } = req.params;
     
+    // Order by sort_order only - user controls order via drag-and-drop
     const result = await pool.query(
       'SELECT * FROM sections WHERE resume_id = $1 ORDER BY sort_order',
       [resumeId]
@@ -25,11 +26,21 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { resume_id, section_type, title, sort_order } = req.body;
     
+    // If sort_order is not provided, calculate it to be at the end of all sections
+    let finalSortOrder = sort_order;
+    if (finalSortOrder === undefined || finalSortOrder === null) {
+      const maxResult = await pool.query(
+        'SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM sections WHERE resume_id = $1',
+        [resume_id]
+      );
+      finalSortOrder = (maxResult.rows[0].max_sort || -1) + 1;
+    }
+    
     const result = await pool.query(
       `INSERT INTO sections (resume_id, section_type, title, sort_order)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [resume_id, section_type, title, sort_order || 0]
+      [resume_id, section_type, title, finalSortOrder]
     );
     
     res.status(201).json(result.rows[0]);

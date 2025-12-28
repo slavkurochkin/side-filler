@@ -25,11 +25,21 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { entry_id, content, sort_order } = req.body;
     
+    // If sort_order is not provided, calculate it to be at the end of the entry's bullets
+    let finalSortOrder = sort_order;
+    if (finalSortOrder === undefined || finalSortOrder === null) {
+      const maxResult = await pool.query(
+        'SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM bullets WHERE entry_id = $1',
+        [entry_id]
+      );
+      finalSortOrder = (maxResult.rows[0].max_sort || -1) + 1;
+    }
+    
     const result = await pool.query(
       `INSERT INTO bullets (entry_id, content, sort_order)
        VALUES ($1, $2, $3)
        RETURNING *`,
-      [entry_id, content, sort_order || 0]
+      [entry_id, content, finalSortOrder]
     );
     
     res.status(201).json(result.rows[0]);
