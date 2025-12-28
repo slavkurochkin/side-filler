@@ -2,11 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ResumePanel } from './components/ResumePanel'
 import { ResumePreview, ResumeTemplate } from './components/ResumePreview'
+import { JobDescription } from './components/JobDescription'
 import { Header } from './components/Header'
 import { Settings, UserSettings, loadSettings } from './components/Settings'
 import { Resume } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+type ViewMode = 'preview' | 'job-description'
 
 function App() {
   const [resumes, setResumes] = useState<Resume[]>([])
@@ -18,7 +21,9 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [userSettings, setUserSettings] = useState<UserSettings>(loadSettings)
   const [template, setTemplate] = useState<ResumeTemplate>('classic')
+  const [viewMode, setViewMode] = useState<ViewMode>('preview')
   const resumeContentRef = useRef<HTMLDivElement>(null)
+
 
   // Load template from localStorage
   useEffect(() => {
@@ -199,6 +204,8 @@ function App() {
         template={template}
         onTemplateChange={handleTemplateChange}
         resumeContentRef={resumeContentRef}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       <Settings 
@@ -242,7 +249,30 @@ function App() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
         >
-          <ResumePreview resume={selectedResume} template={template} resumeContentRef={resumeContentRef} />
+          <AnimatePresence mode="wait">
+            {viewMode === 'preview' ? (
+              <motion.div
+                key="preview"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ResumePreview resume={selectedResume} template={template} resumeContentRef={resumeContentRef} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="job-description"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+              >
+                <JobDescription resumeId={selectedResumeId} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </main>
 
@@ -267,6 +297,7 @@ function App() {
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          min-height: 0;
         }
         
         .left-panel {

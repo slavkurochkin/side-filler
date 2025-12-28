@@ -1,12 +1,10 @@
 import { motion } from 'framer-motion'
-import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File } from 'lucide-react'
+import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File, Eye, Briefcase } from 'lucide-react'
 import React, { useState, useRef, useEffect } from 'react'
 import { Resume } from '../types'
 import { ResumeTemplate } from './ResumePreview'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
-import { Document, Packer, Paragraph, HeadingLevel, AlignmentType } from 'docx'
-import { saveAs } from 'file-saver'
+
+type ViewMode = 'preview' | 'job-description'
 
 interface HeaderProps {
   resumes: Resume[]
@@ -19,9 +17,11 @@ interface HeaderProps {
   template: ResumeTemplate
   onTemplateChange: (template: ResumeTemplate) => void
   resumeContentRef: React.RefObject<HTMLDivElement> | null
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
 }
 
-export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef }: HeaderProps) {
+export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -35,6 +35,9 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
     if (!resumeContentRef?.current || !selectedResume) return
     
     try {
+      const html2canvas = (await import('html2canvas')).default
+      const jsPDF = (await import('jspdf')).default
+      
       const element = resumeContentRef.current
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -71,102 +74,105 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
   const exportToWord = async () => {
     if (!selectedResume) return
 
-    const children: Paragraph[] = [
-      new Paragraph({
-        text: selectedResume.name || 'Your Name',
-        heading: HeadingLevel.TITLE,
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 200 }
-      })
-    ]
+    try {
+      const { Document, Packer, Paragraph, HeadingLevel, AlignmentType } = await import('docx')
+      const { saveAs } = await import('file-saver')
 
-    const contactInfo: string[] = []
-    if (selectedResume.email) contactInfo.push(selectedResume.email)
-    if (selectedResume.phone) contactInfo.push(selectedResume.phone)
-    if (selectedResume.website) contactInfo.push(selectedResume.website.replace(/^https?:\/\//, ''))
-    if (selectedResume.linkedin) contactInfo.push('LinkedIn: ' + selectedResume.linkedin)
-    if (selectedResume.github) contactInfo.push('GitHub: ' + selectedResume.github)
-
-    if (contactInfo.length > 0) {
-      children.push(
+      const children: Paragraph[] = [
         new Paragraph({
-          text: contactInfo.join(' • '),
+          text: selectedResume.name || 'Your Name',
+          heading: HeadingLevel.TITLE,
           alignment: AlignmentType.CENTER,
           spacing: { after: 200 }
         })
-      )
-    }
+      ]
 
-    if (selectedResume.summary) {
-      children.push(
-        new Paragraph({
-          text: selectedResume.summary,
-          spacing: { after: 400 }
-        })
-      )
-    }
+      const contactInfo: string[] = []
+      if (selectedResume.email) contactInfo.push(selectedResume.email)
+      if (selectedResume.phone) contactInfo.push(selectedResume.phone)
+      if (selectedResume.website) contactInfo.push(selectedResume.website.replace(/^https?:\/\//, ''))
+      if (selectedResume.linkedin) contactInfo.push('LinkedIn: ' + selectedResume.linkedin)
+      if (selectedResume.github) contactInfo.push('GitHub: ' + selectedResume.github)
 
-    if (selectedResume.sections) {
-      for (const section of selectedResume.sections) {
+      if (contactInfo.length > 0) {
         children.push(
           new Paragraph({
-            text: section.title.toUpperCase(),
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 400, after: 200 }
+            text: contactInfo.join(' • '),
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 }
           })
         )
+      }
 
-        if (section.entries) {
-          for (const entry of section.entries) {
-            const entryTitle = entry.subtitle 
-              ? `${entry.title} | ${entry.subtitle}`
-              : entry.title
-            
-            children.push(
-              new Paragraph({
-                text: entryTitle,
-                heading: HeadingLevel.HEADING_2,
-                spacing: { before: 200, after: 100 }
-              })
-            )
+      if (selectedResume.summary) {
+        children.push(
+          new Paragraph({
+            text: selectedResume.summary,
+            spacing: { after: 400 }
+          })
+        )
+      }
 
-            const dateRange = entry.start_date || entry.end_date || entry.is_current
-              ? `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
-              : ''
-            
-            if (dateRange || entry.location) {
-              const meta = [dateRange, entry.location].filter(Boolean).join(' • ')
+      if (selectedResume.sections) {
+        for (const section of selectedResume.sections) {
+          children.push(
+            new Paragraph({
+              text: section.title.toUpperCase(),
+              heading: HeadingLevel.HEADING_1,
+              spacing: { before: 400, after: 200 }
+            })
+          )
+
+          if (section.entries) {
+            for (const entry of section.entries) {
+              const entryTitle = entry.subtitle 
+                ? `${entry.title} | ${entry.subtitle}`
+                : entry.title
+              
               children.push(
                 new Paragraph({
-                  text: meta,
-                  spacing: { after: 100 }
+                  text: entryTitle,
+                  heading: HeadingLevel.HEADING_2,
+                  spacing: { before: 200, after: 100 }
                 })
               )
-            }
 
-            if (entry.bullets && entry.bullets.length > 0) {
-              for (const bullet of entry.bullets) {
+              const dateRange = entry.start_date || entry.end_date || entry.is_current
+                ? `${formatDate(entry.start_date)} - ${entry.is_current ? 'Present' : formatDate(entry.end_date)}`
+                : ''
+              
+              if (dateRange || entry.location) {
+                const meta = [dateRange, entry.location].filter(Boolean).join(' • ')
                 children.push(
                   new Paragraph({
-                    text: `• ${bullet.content}`,
-                    spacing: { after: 100 },
-                    indent: { left: 400 }
+                    text: meta,
+                    spacing: { after: 100 }
                   })
                 )
+              }
+
+              if (entry.bullets && entry.bullets.length > 0) {
+                for (const bullet of entry.bullets) {
+                  children.push(
+                    new Paragraph({
+                      text: `• ${bullet.content}`,
+                      spacing: { after: 100 },
+                      indent: { left: 400 }
+                    })
+                  )
+                }
               }
             }
           }
         }
       }
-    }
 
-    const doc = new Document({
-      sections: [{
-        children
-      }]
-    })
+      const doc = new Document({
+        sections: [{
+          children
+        }]
+      })
 
-    try {
       const blob = await Packer.toBlob(doc)
       saveAs(blob, `${selectedResume.name || 'resume'}.docx`)
     } catch (error) {
@@ -323,7 +329,7 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
               className="export-btn-header"
               onClick={exportToPDF}
               title="Export to PDF"
-              disabled={!resumeContentRef?.current}
+              disabled={!resumeContentRef?.current || viewMode !== 'preview'}
             >
               <FileTextIcon size={16} />
               <span>PDF</span>
@@ -332,6 +338,7 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
               className="export-btn-header"
               onClick={exportToWord}
               title="Export to Word"
+              disabled={viewMode !== 'preview'}
             >
               <File size={16} />
               <span>Word</span>
@@ -340,24 +347,45 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
               className="export-btn-header"
               onClick={exportToGoogleDocs}
               title="Copy for Google Docs"
+              disabled={viewMode !== 'preview'}
             >
               <Download size={16} />
               <span>Google Docs</span>
             </button>
           </div>
         )}
-        <div className="template-selector-header">
-          <Palette size={16} />
-          <select 
-            value={template} 
-            onChange={(e) => onTemplateChange(e.target.value as ResumeTemplate)}
-            className="template-select-header"
+        <div className="view-mode-toggle">
+          <button
+            className={`view-mode-btn ${viewMode === 'preview' ? 'active' : ''}`}
+            onClick={() => onViewModeChange('preview')}
+            title="Resume Preview"
           >
-            <option value="classic">Classic</option>
-            <option value="modern">Modern</option>
-            <option value="minimal">Minimal</option>
-          </select>
+            <Eye size={16} />
+            <span>Preview</span>
+          </button>
+          <button
+            className={`view-mode-btn ${viewMode === 'job-description' ? 'active' : ''}`}
+            onClick={() => onViewModeChange('job-description')}
+            title="Job Description"
+          >
+            <Briefcase size={16} />
+            <span>Job Description</span>
+          </button>
         </div>
+        {viewMode === 'preview' && (
+          <div className="template-selector-header">
+            <Palette size={16} />
+            <select 
+              value={template} 
+              onChange={(e) => onTemplateChange(e.target.value as ResumeTemplate)}
+              className="template-select-header"
+            >
+              <option value="classic">Classic</option>
+              <option value="modern">Modern</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </div>
+        )}
         <button 
           className="settings-btn"
           onClick={onOpenSettings}
@@ -437,6 +465,54 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
         }
 
         .export-btn-header svg {
+          flex-shrink: 0;
+        }
+
+        .view-mode-toggle {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          padding: 2px;
+        }
+
+        .view-mode-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: var(--radius-sm);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 150ms ease;
+          background: transparent;
+          border: none;
+          white-space: nowrap;
+        }
+
+        .view-mode-btn span {
+          white-space: nowrap;
+        }
+
+        .view-mode-btn:hover {
+          color: var(--text-primary);
+          background: var(--bg-hover);
+        }
+
+        .view-mode-btn.active {
+          background: var(--accent-primary);
+          color: white;
+        }
+
+        .view-mode-btn.active:hover {
+          background: var(--accent-secondary);
+        }
+
+        .view-mode-btn svg {
           flex-shrink: 0;
         }
 

@@ -8,9 +8,115 @@ import sectionRoutes from './routes/sections.js';
 import entryRoutes from './routes/entries.js';
 import bulletRoutes from './routes/bullets.js';
 import urlRoutes from './routes/urls.js';
+import jobDescriptionRoutes from './routes/job-descriptions.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Auto-migration: Check and create job_descriptions table if it doesn't exist
+async function ensureJobDescriptionsTable() {
+  try {
+    // Check if table exists
+    const result = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'job_descriptions'
+      )
+    `);
+    
+    if (!result.rows[0].exists) {
+      console.log('📋 Creating job_descriptions table...');
+      
+      // Enable UUID extension
+      await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+      
+      // Create table
+      await pool.query(`
+        CREATE TABLE job_descriptions (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
+          content TEXT NOT NULL,
+          title VARCHAR(500),
+          job_posting_url TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Add job_posting_url column if table exists but column doesn't
+      await pool.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'job_descriptions' 
+            AND column_name = 'job_posting_url'
+          ) THEN
+            ALTER TABLE job_descriptions ADD COLUMN job_posting_url TEXT;
+          END IF;
+        END $$;
+      `);
+      
+      // Create index
+      await pool.query(`
+        CREATE INDEX idx_job_descriptions_resume_id 
+        ON job_descriptions(resume_id)
+      `);
+      
+      // Create trigger function if it doesn't exist
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+        END;
+        $$ language 'plpgsql'
+      `);
+      
+      // Create trigger
+      await pool.query(`
+        DROP TRIGGER IF EXISTS update_job_descriptions_updated_at ON job_descriptions
+      `);
+      
+      await pool.query(`
+        CREATE TRIGGER update_job_descriptions_updated_at 
+        BEFORE UPDATE ON job_descriptions 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column()
+      `);
+      
+      console.log('✅ job_descriptions table created successfully');
+    } else {
+      console.log('✅ job_descriptions table already exists');
+      
+      // Ensure job_posting_url column exists (for existing tables)
+      try {
+        await pool.query(`
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'job_descriptions' 
+              AND column_name = 'job_posting_url'
+            ) THEN
+              ALTER TABLE job_descriptions ADD COLUMN job_posting_url TEXT;
+              RAISE NOTICE 'Added job_posting_url column';
+            END IF;
+          END $$;
+        `);
+        console.log('✅ Verified job_posting_url column exists');
+      } catch (error) {
+        console.error('⚠️ Error checking job_posting_url column:', error);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring job_descriptions table:', error);
+    // Don't throw - allow server to start even if migration fails
+    // The error will be caught when trying to use the table
+  }
+}
 
 // Middleware
 app.use(helmet());
@@ -20,6 +126,9 @@ app.use(cors({
 }));
 app.use(morgan('dev'));
 app.use(express.json());
+
+// Run migration on startup
+ensureJobDescriptionsTable();
 
 // Health check
 app.get('/health', async (req, res) => {
@@ -37,6 +146,7 @@ app.use('/api/sections', sectionRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/bullets', bulletRoutes);
 app.use('/api/urls', urlRoutes);
+app.use('/api/job-descriptions', jobDescriptionRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

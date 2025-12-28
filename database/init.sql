@@ -67,12 +67,24 @@ CREATE TABLE saved_urls (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Job Descriptions table (for storing job descriptions)
+CREATE TABLE job_descriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    title VARCHAR(500),
+    job_posting_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better query performance
 CREATE INDEX idx_sections_resume_id ON sections(resume_id);
 CREATE INDEX idx_entries_section_id ON entries(section_id);
 CREATE INDEX idx_bullets_entry_id ON bullets(entry_id);
 CREATE INDEX idx_saved_urls_resume_id ON saved_urls(resume_id);
 CREATE INDEX idx_saved_urls_status ON saved_urls(status);
+CREATE INDEX idx_job_descriptions_resume_id ON job_descriptions(resume_id);
 
 -- Trigger function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -89,6 +101,7 @@ CREATE TRIGGER update_sections_updated_at BEFORE UPDATE ON sections FOR EACH ROW
 CREATE TRIGGER update_entries_updated_at BEFORE UPDATE ON entries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_bullets_updated_at BEFORE UPDATE ON bullets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_saved_urls_updated_at BEFORE UPDATE ON saved_urls FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_job_descriptions_updated_at BEFORE UPDATE ON job_descriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert sample data
 INSERT INTO resumes (id, name, email, phone, website, linkedin, github, summary) VALUES
