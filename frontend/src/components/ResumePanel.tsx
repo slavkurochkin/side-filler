@@ -28,6 +28,10 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
   const [editValue, setEditValue] = useState('')
   const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null)
   const [dragOverSectionId, setDragOverSectionId] = useState<string | null>(null)
+  const [showSummaryAIModal, setShowSummaryAIModal] = useState(false)
+  const [isLoadingSummaryAI, setIsLoadingSummaryAI] = useState(false)
+  const [summaryAIError, setSummaryAIError] = useState<string | null>(null)
+  const [suggestedSummary, setSuggestedSummary] = useState<string>('')
 
   if (!resume) {
     return (
@@ -81,6 +85,66 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
     } catch (error) {
       console.error('Failed to update:', error)
     }
+  }
+
+  const adjustSummaryWithAI = async () => {
+    if (!jobDescription) {
+      return
+    }
+
+    setIsLoadingSummaryAI(true)
+    setSummaryAIError(null)
+    setShowSummaryAIModal(true)
+
+    try {
+      const response = await fetch(`${apiUrl}/ai/adjust-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobDescription,
+          currentSummary: resume.summary || '',
+          resumeName: resume.name,
+          resumeTitle: resume.title || undefined
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to generate AI suggestions' }))
+        throw new Error(errorData.error || 'Failed to generate AI suggestions')
+      }
+
+      const data = await response.json()
+      setSuggestedSummary(data.suggestedSummary || '')
+    } catch (error) {
+      console.error('Failed to adjust summary with AI:', error)
+      setSummaryAIError(error instanceof Error ? error.message : 'Failed to generate AI suggestions')
+      setSuggestedSummary('')
+    } finally {
+      setIsLoadingSummaryAI(false)
+    }
+  }
+
+  const acceptSummaryAISuggestion = async () => {
+    if (!suggestedSummary.trim()) return
+
+    try {
+      setEditValue(suggestedSummary)
+      setShowSummaryAIModal(false)
+      setSuggestedSummary('')
+      // If not already editing, start editing with the suggested summary
+      if (editingField !== 'summary') {
+        setEditingField('summary')
+      }
+    } catch (error) {
+      console.error('Failed to accept AI suggestion:', error)
+      alert('Failed to accept suggestion. Please try again.')
+    }
+  }
+
+  const declineSummaryAISuggestion = () => {
+    setShowSummaryAIModal(false)
+    setSuggestedSummary('')
+    setSummaryAIError(null)
   }
 
   const addSection = async (type: string) => {
@@ -369,6 +433,15 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
               autoFocus
             />
             <div className="edit-actions">
+              {jobDescription && (
+                <button 
+                  className="btn-ai-summary" 
+                  onClick={adjustSummaryWithAI}
+                  title="Generate AI-optimized summary"
+                >
+                  <Sparkles size={14} /> AI
+                </button>
+              )}
               <button className="btn-save" onClick={() => saveEdit('summary')}>
                 <Save size={14} /> Save
               </button>
@@ -378,13 +451,24 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
             </div>
           </div>
         ) : (
-          <p 
-            className="summary"
-            onClick={() => startEdit('summary', resume.summary || '')}
-          >
-            {resume.summary || 'Click to add a professional summary...'}
-            <Edit3 size={12} className="edit-icon" />
-          </p>
+          <div className="summary-container">
+            <p 
+              className="summary"
+              onClick={() => startEdit('summary', resume.summary || '')}
+            >
+              {resume.summary || 'Click to add a professional summary...'}
+              <Edit3 size={12} className="edit-icon" />
+            </p>
+            {jobDescription && (
+              <button 
+                className="summary-ai-btn"
+                onClick={adjustSummaryWithAI}
+                title={resume.summary ? "Optimize summary with AI" : "Generate AI-optimized summary"}
+              >
+                <Sparkles size={12} /> {resume.summary ? 'Optimize' : 'Generate'}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -446,6 +530,68 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           </div>
         </div>
       </div>
+
+      {/* Summary AI Modal */}
+      {showSummaryAIModal && (
+        <div className="summary-ai-modal-overlay" onClick={declineSummaryAISuggestion}>
+          <div className="summary-ai-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="summary-ai-modal-header">
+              <h3>
+                <Sparkles size={18} />
+                AI-Optimized Summary
+              </h3>
+              <button className="close-modal-btn" onClick={declineSummaryAISuggestion}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="summary-ai-modal-content">
+              {isLoadingSummaryAI ? (
+                <div className="ai-loading">
+                  <Loader2 size={24} className="spinner" />
+                  <p>Analyzing job description and generating summary...</p>
+                </div>
+              ) : summaryAIError ? (
+                <div className="ai-error">
+                  <p>{summaryAIError}</p>
+                  <button className="btn-retry" onClick={adjustSummaryWithAI}>
+                    Try Again
+                  </button>
+                </div>
+              ) : suggestedSummary ? (
+                <>
+                  <div className="summary-ai-comparison">
+                    <div className="comparison-section">
+                      <h4>Current Summary</h4>
+                      <div className="summary-compare">
+                        {resume.summary || <em>No summary provided</em>}
+                      </div>
+                    </div>
+                    <div className="comparison-section">
+                      <h4>Suggested Summary (Editable)</h4>
+                      <textarea
+                        className="summary-input-editable"
+                        value={suggestedSummary}
+                        onChange={(e) => setSuggestedSummary(e.target.value)}
+                        placeholder="AI-generated summary..."
+                        rows={6}
+                      />
+                    </div>
+                  </div>
+                  <div className="summary-ai-modal-actions">
+                    <button className="btn-decline" onClick={declineSummaryAISuggestion}>
+                      Decline
+                    </button>
+                    <button className="btn-accept" onClick={acceptSummaryAISuggestion}>
+                      Use This Summary
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .resume-panel {
@@ -601,6 +747,11 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           color: var(--text-primary);
         }
 
+        .summary-container {
+          position: relative;
+          margin: 0 calc(-1 * var(--space-sm));
+        }
+
         .summary {
           color: var(--text-secondary);
           font-size: 0.9rem;
@@ -608,7 +759,6 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           cursor: pointer;
           padding: var(--space-sm);
           border-radius: var(--radius-sm);
-          margin: 0 calc(-1 * var(--space-sm));
           display: flex;
           align-items: flex-start;
           gap: var(--space-sm);
@@ -616,6 +766,34 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
 
         .summary:hover {
           background: var(--bg-tertiary);
+        }
+
+        .summary-ai-btn {
+          position: absolute;
+          top: var(--space-xs);
+          right: var(--space-xs);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-sm);
+          color: var(--accent-primary);
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          opacity: 0;
+        }
+
+        .summary-container:hover .summary-ai-btn {
+          opacity: 1;
+        }
+
+        .summary-ai-btn:hover {
+          background: var(--accent-glow);
+          border-color: var(--accent-primary);
         }
 
         .summary-edit textarea {
@@ -636,7 +814,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           margin-top: var(--space-sm);
         }
 
-        .btn-save, .btn-cancel {
+        .btn-save, .btn-cancel, .btn-ai-summary {
           display: flex;
           align-items: center;
           gap: var(--space-xs);
@@ -655,6 +833,224 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
         .btn-cancel {
           background: var(--bg-tertiary);
           color: var(--text-secondary);
+        }
+
+        .btn-ai-summary {
+          background: var(--accent-glow);
+          color: var(--accent-primary);
+          border: 1px solid var(--accent-primary);
+        }
+
+        .btn-ai-summary:hover {
+          background: var(--accent-primary);
+          color: white;
+        }
+
+        .summary-ai-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          padding: 20px;
+        }
+
+        .summary-ai-modal {
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 800px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .summary-ai-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .summary-ai-modal-header h3 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .summary-ai-modal-header h3 svg {
+          color: var(--accent-primary);
+        }
+
+        .close-modal-btn {
+          padding: 4px;
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .close-modal-btn:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .summary-ai-modal-content {
+          padding: 24px;
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .summary-ai-comparison {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .comparison-section h4 {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .summary-compare {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 16px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          line-height: 1.6;
+          min-height: 120px;
+        }
+
+        .summary-compare em {
+          color: var(--text-muted);
+          font-style: italic;
+        }
+
+        .summary-input-editable {
+          width: 100%;
+          background: var(--bg-secondary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-md);
+          padding: 16px;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+          line-height: 1.6;
+          resize: vertical;
+          font-family: inherit;
+        }
+
+        .summary-input-editable:focus {
+          outline: none;
+          border-color: var(--accent-secondary);
+          box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .summary-ai-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          padding-top: 16px;
+          border-top: 1px solid var(--border-subtle);
+        }
+
+        .btn-decline, .btn-accept {
+          padding: 10px 20px;
+          border-radius: var(--radius-md);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          border: none;
+        }
+
+        .btn-decline {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .btn-decline:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .btn-accept {
+          background: var(--accent-primary);
+          color: white;
+        }
+
+        .btn-accept:hover {
+          background: var(--accent-secondary);
+        }
+
+        .ai-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 24px;
+          gap: 16px;
+          color: var(--text-secondary);
+        }
+
+        .ai-loading .spinner {
+          animation: spin 1s linear infinite;
+          color: var(--accent-primary);
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .ai-error {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 24px;
+          gap: 16px;
+          color: var(--accent-danger);
+          text-align: center;
+        }
+
+        .btn-retry {
+          padding: 8px 16px;
+          background: var(--accent-primary);
+          color: white;
+          border: none;
+          border-radius: var(--radius-md);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .btn-retry:hover {
+          background: var(--accent-secondary);
+        }
+
+        @media (max-width: 768px) {
+          .summary-ai-comparison {
+            grid-template-columns: 1fr;
+          }
         }
 
         .sections-container {

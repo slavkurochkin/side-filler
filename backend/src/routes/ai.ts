@@ -11,6 +11,13 @@ interface AdjustExperienceRequest {
   currentBullets: string[];
 }
 
+interface AdjustSummaryRequest {
+  jobDescription: string;
+  currentSummary?: string;
+  resumeName?: string;
+  resumeTitle?: string;
+}
+
 /**
  * Adjust experience bullets based on job description
  * POST /api/ai/adjust-experience
@@ -109,6 +116,98 @@ ATS-Optimized Rewritten Bullet Points:`;
 
   } catch (error) {
     console.error('Error adjusting experience with AI:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({ 
+      error: 'Failed to generate AI suggestions',
+      details: errorMessage
+    });
+  }
+});
+
+/**
+ * Adjust resume summary based on job description
+ * POST /api/ai/adjust-summary
+ */
+router.post('/adjust-summary', async (req: Request, res: Response) => {
+  try {
+    const { jobDescription, currentSummary, resumeName, resumeTitle }: AdjustSummaryRequest = req.body;
+
+    // Validate required fields
+    if (!jobDescription) {
+      return res.status(400).json({ 
+        error: 'jobDescription is required' 
+      });
+    }
+
+    // Get Langchain client
+    const client = await getLangchainClient();
+    if (!client) {
+      return res.status(503).json({ 
+        error: 'AI service not available. Please configure OpenAI API key in settings.' 
+      });
+    }
+
+    // Build context for the prompt
+    const resumeContext = resumeName || resumeTitle 
+      ? `Applicant: ${resumeName || ''}${resumeTitle ? ` (${resumeTitle})` : ''}`
+      : '';
+
+    const currentSummaryText = currentSummary && currentSummary.trim() 
+      ? currentSummary.trim()
+      : 'No current summary provided.';
+
+    // Create prompt
+    const prompt = `You are an ATS (Applicant Tracking System) optimization expert. Your task is to write or rewrite a professional resume summary that is ATS-friendly and optimized for the specific job description.
+
+Job Description:
+${jobDescription}
+
+${resumeContext ? `Resume Information:\n${resumeContext}\n` : ''}
+Current Summary:
+${currentSummaryText}
+
+Instructions for ATS-Optimized Summary:
+1. Extract and incorporate relevant keywords from the job description (skills, technologies, methodologies, tools, certifications mentioned)
+2. Use industry-standard terminology and job-relevant keywords naturally throughout the summary
+3. Start with a strong opening that highlights years of experience and key expertise areas mentioned in the job description
+4. Include 2-3 sentences that demonstrate alignment with job requirements
+5. Focus on quantifiable achievements, relevant skills, and career highlights that match the job description
+6. Keep the summary concise (3-4 sentences, approximately 50-100 words)
+7. Ensure the summary is professional, clear, concise, and ATS-parseable (avoid special characters that might confuse ATS systems)
+8. If a current summary exists, preserve relevant information while optimizing it for the job description
+9. Make it compelling and tailored specifically to this job opportunity
+10. Return ONLY the summary text, without any labels, headers, or additional commentary
+
+ATS-Optimized Professional Summary:`;
+
+    // Call OpenAI
+    const response = await client.invoke(prompt);
+
+    // Parse response to extract summary
+    // Langchain returns an AIMessage object with content property
+    const responseText = response.content?.toString() || String(response);
+
+    // Clean up the response - remove any labels or headers
+    let suggestedSummary = responseText
+      .trim()
+      .replace(/^(ATS-Optimized Professional Summary|Professional Summary|Summary):\s*/i, '')
+      .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+      .trim();
+
+    // If the summary is too long, try to truncate intelligently
+    if (suggestedSummary.length > 500) {
+      // Try to find a good breaking point (end of sentence)
+      const sentences = suggestedSummary.match(/[^.!?]+[.!?]+/g) || [];
+      suggestedSummary = sentences.slice(0, 4).join(' ').trim();
+    }
+
+    res.json({
+      suggestedSummary: suggestedSummary || '',
+      originalSummary: currentSummary || ''
+    });
+
+  } catch (error) {
+    console.error('Error adjusting summary with AI:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       error: 'Failed to generate AI suggestions',
