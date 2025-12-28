@@ -9,6 +9,7 @@ interface AdjustExperienceRequest {
   entrySubtitle?: string;
   entryLocation?: string;
   currentBullets: string[];
+  additionalInstructions?: string;
 }
 
 interface AdjustSummaryRequest {
@@ -16,11 +17,13 @@ interface AdjustSummaryRequest {
   currentSummary?: string;
   resumeName?: string;
   resumeTitle?: string;
+  additionalInstructions?: string;
 }
 
 interface AdjustSkillsRequest {
   jobDescription: string;
   currentSkills: string[];
+  additionalInstructions?: string;
 }
 
 /**
@@ -29,7 +32,7 @@ interface AdjustSkillsRequest {
  */
 router.post('/adjust-experience', async (req: Request, res: Response) => {
   try {
-    const { jobDescription, entryTitle, entrySubtitle, entryLocation, currentBullets }: AdjustExperienceRequest = req.body;
+    const { jobDescription, entryTitle, entrySubtitle, entryLocation, currentBullets, additionalInstructions }: AdjustExperienceRequest = req.body;
 
     // Validate required fields
     if (!jobDescription || !entryTitle || !currentBullets) {
@@ -75,6 +78,7 @@ Instructions for ATS-Optimized Rewriting:
 8. Maintain similar length and detail level as the original bullets
 9. Generate exactly ${currentBullets.length || 3} bullet points
 10. Return ONLY the bullet points, one per line, without numbering or bullet symbols
+${additionalInstructions ? `\n\nAdditional Instructions from User:\n${additionalInstructions}` : ''}
 
 ATS-Optimized Rewritten Bullet Points:`;
 
@@ -135,7 +139,7 @@ ATS-Optimized Rewritten Bullet Points:`;
  */
 router.post('/adjust-summary', async (req: Request, res: Response) => {
   try {
-    const { jobDescription, currentSummary, resumeName, resumeTitle }: AdjustSummaryRequest = req.body;
+    const { jobDescription, currentSummary, resumeName, resumeTitle, additionalInstructions }: AdjustSummaryRequest = req.body;
 
     // Validate required fields
     if (!jobDescription) {
@@ -182,6 +186,7 @@ Instructions for ATS-Optimized Summary:
 8. If a current summary exists, preserve relevant information while optimizing it for the job description
 9. Make it compelling and tailored specifically to this job opportunity
 10. Return ONLY the summary text, without any labels, headers, or additional commentary
+${additionalInstructions ? `\n\nAdditional Instructions from User:\n${additionalInstructions}` : ''}
 
 ATS-Optimized Professional Summary:`;
 
@@ -227,7 +232,7 @@ ATS-Optimized Professional Summary:`;
  */
 router.post('/adjust-skills', async (req: Request, res: Response) => {
   try {
-    const { jobDescription, currentSkills }: AdjustSkillsRequest = req.body;
+    const { jobDescription, currentSkills, additionalInstructions }: AdjustSkillsRequest = req.body;
 
     // Validate required fields
     if (!jobDescription) {
@@ -269,6 +274,7 @@ Instructions for ATS-Optimized Skills List:
 9. Return a comprehensive list that would help the candidate pass ATS screening for this specific job
 10. Return ONLY a comma-separated list of skills, with no labels, headers, numbering, or additional commentary
 11. Limit to 30-50 most relevant skills maximum
+${additionalInstructions ? `\n\nAdditional Instructions from User:\n${additionalInstructions}` : ''}
 
 ATS-Optimized Skills List:`;
 

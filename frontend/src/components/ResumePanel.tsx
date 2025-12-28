@@ -32,6 +32,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
   const [isLoadingSummaryAI, setIsLoadingSummaryAI] = useState(false)
   const [summaryAIError, setSummaryAIError] = useState<string | null>(null)
   const [suggestedSummary, setSuggestedSummary] = useState<string>('')
+  const [summaryAdditionalInstructions, setSummaryAdditionalInstructions] = useState('')
 
   if (!resume) {
     return (
@@ -94,7 +95,6 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
 
     setIsLoadingSummaryAI(true)
     setSummaryAIError(null)
-    setShowSummaryAIModal(true)
 
     try {
       const response = await fetch(`${apiUrl}/ai/adjust-summary`, {
@@ -104,7 +104,8 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           jobDescription,
           currentSummary: resume.summary || '',
           resumeName: resume.name,
-          resumeTitle: resume.title || undefined
+          resumeTitle: resume.title || undefined,
+          additionalInstructions: summaryAdditionalInstructions.trim() || undefined
         })
       })
 
@@ -145,6 +146,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
     setShowSummaryAIModal(false)
     setSuggestedSummary('')
     setSummaryAIError(null)
+    setSummaryAdditionalInstructions('')
   }
 
   const addSection = async (type: string) => {
@@ -436,7 +438,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
               {jobDescription && (
                 <button 
                   className="btn-ai-summary" 
-                  onClick={adjustSummaryWithAI}
+                  onClick={() => setShowSummaryAIModal(true)}
                   title="Generate AI-optimized summary"
                 >
                   <Sparkles size={14} /> AI
@@ -462,7 +464,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
             {jobDescription && (
               <button 
                 className="summary-ai-btn"
-                onClick={adjustSummaryWithAI}
+                onClick={() => setShowSummaryAIModal(true)}
                 title={resume.summary ? "Optimize summary with AI" : "Generate AI-optimized summary"}
               >
                 <Sparkles size={12} /> {resume.summary ? 'Optimize' : 'Generate'}
@@ -560,6 +562,16 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                 </div>
               ) : suggestedSummary ? (
                 <>
+                  <div className="ai-instructions-section">
+                    <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                    <textarea
+                      className="ai-instructions-input"
+                      value={summaryAdditionalInstructions}
+                      onChange={(e) => setSummaryAdditionalInstructions(e.target.value)}
+                      placeholder="Add any specific instructions for the AI (e.g., 'Keep it under 80 words', 'Emphasize technical skills')"
+                      rows={3}
+                    />
+                  </div>
                   <div className="summary-ai-comparison">
                     <div className="comparison-section">
                       <h4>Current Summary</h4>
@@ -582,12 +594,34 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                     <button className="btn-decline" onClick={declineSummaryAISuggestion}>
                       Decline
                     </button>
+                    <button className="btn-regenerate" onClick={adjustSummaryWithAI} disabled={isLoadingSummaryAI}>
+                      Regenerate
+                    </button>
                     <button className="btn-accept" onClick={acceptSummaryAISuggestion}>
                       Use This Summary
                     </button>
                   </div>
                 </>
-              ) : null}
+              ) : (
+                <div className="ai-instructions-section">
+                  <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                  <textarea
+                    className="ai-instructions-input"
+                    value={summaryAdditionalInstructions}
+                    onChange={(e) => setSummaryAdditionalInstructions(e.target.value)}
+                    placeholder="Add any specific instructions for the AI (e.g., 'Keep it under 80 words', 'Emphasize technical skills')"
+                    rows={3}
+                  />
+                  <div className="summary-ai-modal-actions">
+                    <button className="btn-decline" onClick={declineSummaryAISuggestion}>
+                      Cancel
+                    </button>
+                    <button className="btn-generate" onClick={adjustSummaryWithAI} disabled={isLoadingSummaryAI}>
+                      Generate Summary
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -913,6 +947,41 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           flex: 1;
         }
 
+        .ai-instructions-section {
+          margin-bottom: 24px;
+        }
+
+        .ai-instructions-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
+        }
+
+        .ai-instructions-input {
+          width: 100%;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          padding: 12px;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          line-height: 1.5;
+          resize: vertical;
+          font-family: inherit;
+        }
+
+        .ai-instructions-input:focus {
+          outline: none;
+          border-color: var(--accent-primary);
+          box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .ai-instructions-input::placeholder {
+          color: var(--text-muted);
+        }
+
         .summary-ai-comparison {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -972,7 +1041,42 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           border-top: 1px solid var(--border-subtle);
         }
 
-        .btn-decline, .btn-accept {
+        .ai-instructions-section {
+          margin-bottom: 24px;
+        }
+
+        .ai-instructions-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
+        }
+
+        .ai-instructions-input {
+          width: 100%;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          padding: 12px;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          line-height: 1.5;
+          resize: vertical;
+          font-family: inherit;
+        }
+
+        .ai-instructions-input:focus {
+          outline: none;
+          border-color: var(--accent-primary);
+          box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .ai-instructions-input::placeholder {
+          color: var(--text-muted);
+        }
+
+        .btn-decline, .btn-accept, .btn-regenerate, .btn-generate {
           padding: 10px 20px;
           border-radius: var(--radius-md);
           font-size: 0.875rem;
@@ -990,6 +1094,22 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
         .btn-decline:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
+        }
+
+        .btn-regenerate, .btn-generate {
+          background: var(--bg-tertiary);
+          color: var(--accent-primary);
+          border: 1px solid var(--accent-primary);
+        }
+
+        .btn-regenerate:hover:not(:disabled), .btn-generate:hover:not(:disabled) {
+          background: var(--accent-glow);
+          color: var(--accent-secondary);
+        }
+
+        .btn-regenerate:disabled, .btn-generate:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .btn-accept {
@@ -1175,6 +1295,7 @@ function SectionCard({
   const [isLoadingSkillsAI, setIsLoadingSkillsAI] = useState(false)
   const [skillsAIError, setSkillsAIError] = useState<string | null>(null)
   const [suggestedSkills, setSuggestedSkills] = useState<string[]>([])
+  const [skillsAdditionalInstructions, setSkillsAdditionalInstructions] = useState('')
 
   const adjustSkillsWithAI = async () => {
     if (!jobDescription) {
@@ -1183,7 +1304,6 @@ function SectionCard({
 
     setIsLoadingSkillsAI(true)
     setSkillsAIError(null)
-    setShowSkillsAIModal(true)
 
     try {
       // Collect all current skills from all entries in the section
@@ -1196,7 +1316,8 @@ function SectionCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobDescription,
-          currentSkills
+          currentSkills,
+          additionalInstructions: skillsAdditionalInstructions.trim() || undefined
         })
       })
 
@@ -1268,6 +1389,7 @@ function SectionCard({
     setShowSkillsAIModal(false)
     setSuggestedSkills([])
     setSkillsAIError(null)
+    setSkillsAdditionalInstructions('')
   }
 
   const updateSuggestedSkill = (index: number, value: string) => {
@@ -1320,7 +1442,7 @@ function SectionCard({
               className="action-btn ai-btn" 
               onClick={(e) => { 
                 e.stopPropagation(); 
-                adjustSkillsWithAI(); 
+                setShowSkillsAIModal(true);
               }}
               title="Generate AI-optimized skills"
             >
@@ -1391,6 +1513,16 @@ function SectionCard({
                 </div>
               ) : suggestedSkills.length > 0 ? (
                 <>
+                  <div className="ai-instructions-section">
+                    <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                    <textarea
+                      className="ai-instructions-input"
+                      value={skillsAdditionalInstructions}
+                      onChange={(e) => setSkillsAdditionalInstructions(e.target.value)}
+                      placeholder="Add any specific instructions for the AI (e.g., 'Focus on cloud technologies', 'Include soft skills')"
+                      rows={3}
+                    />
+                  </div>
                   <div className="skills-ai-comparison">
                     <div className="comparison-section">
                       <h4>Current Skills</h4>
@@ -1443,12 +1575,34 @@ function SectionCard({
                     <button className="btn-decline" onClick={declineSkillsAISuggestions}>
                       Decline
                     </button>
+                    <button className="btn-regenerate" onClick={adjustSkillsWithAI} disabled={isLoadingSkillsAI}>
+                      Regenerate
+                    </button>
                     <button className="btn-accept" onClick={acceptSkillsAISuggestions}>
                       Use These Skills
                     </button>
                   </div>
                 </>
-              ) : null}
+              ) : (
+                <div className="ai-instructions-section">
+                  <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                  <textarea
+                    className="ai-instructions-input"
+                    value={skillsAdditionalInstructions}
+                    onChange={(e) => setSkillsAdditionalInstructions(e.target.value)}
+                    placeholder="Add any specific instructions for the AI (e.g., 'Focus on cloud technologies', 'Include soft skills')"
+                    rows={3}
+                  />
+                  <div className="skills-ai-modal-actions">
+                    <button className="btn-decline" onClick={declineSkillsAISuggestions}>
+                      Cancel
+                    </button>
+                    <button className="btn-generate" onClick={adjustSkillsWithAI} disabled={isLoadingSkillsAI}>
+                      Generate Skills
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1810,6 +1964,7 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
   const [aiError, setAiError] = useState<string | null>(null)
   const [editingBulletId, setEditingBulletId] = useState<string | null>(null)
   const [editingBulletContent, setEditingBulletContent] = useState('')
+  const [additionalInstructions, setAdditionalInstructions] = useState('')
 
   const copyField = async (field: string, text: string) => {
     try {
@@ -1943,7 +2098,6 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
 
     setIsLoadingAI(true)
     setAiError(null)
-    setShowAIModal(true)
 
     try {
       const response = await fetch(`${apiUrl}/ai/adjust-experience`, {
@@ -1954,7 +2108,8 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
           entryTitle: entry.title,
           entrySubtitle: entry.subtitle,
           entryLocation: entry.location,
-          currentBullets: entry.bullets.map(b => b.content)
+          currentBullets: entry.bullets.map(b => b.content),
+          additionalInstructions: additionalInstructions.trim() || undefined
         })
       })
 
@@ -2033,6 +2188,7 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
     setShowAIModal(false)
     setSuggestedBullets([])
     setAiError(null)
+    setAdditionalInstructions('')
   }
 
   if (isEditing) {
@@ -2203,7 +2359,7 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
           <div className="entry-actions">
             {jobDescription && entry.bullets && entry.bullets.length > 0 && (
               <button 
-                onClick={adjustWithAI}
+                onClick={() => setShowAIModal(true)}
                 className="ai-adjust-btn"
                 title="Adjust with AI"
               >
@@ -2349,6 +2505,16 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
                 </div>
               ) : suggestedBullets.length > 0 ? (
                 <>
+                  <div className="ai-instructions-section">
+                    <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                    <textarea
+                      className="ai-instructions-input"
+                      value={additionalInstructions}
+                      onChange={(e) => setAdditionalInstructions(e.target.value)}
+                      placeholder="Add any specific instructions for the AI (e.g., 'Emphasize leadership skills', 'Focus on metrics')"
+                      rows={3}
+                    />
+                  </div>
                   <div className="ai-comparison">
                     <div className="comparison-section">
                       <h4>Current Bullets</h4>
@@ -2384,12 +2550,34 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
                     <button className="btn-decline" onClick={declineAISuggestions}>
                       Decline
                     </button>
+                    <button className="btn-regenerate" onClick={adjustWithAI} disabled={isLoadingAI}>
+                      Regenerate
+                    </button>
                     <button className="btn-accept" onClick={acceptAISuggestions}>
                       Accept Changes
                     </button>
                   </div>
                 </>
-              ) : null}
+              ) : (
+                <div className="ai-instructions-section">
+                  <label className="ai-instructions-label">Additional Instructions (Optional)</label>
+                  <textarea
+                    className="ai-instructions-input"
+                    value={additionalInstructions}
+                    onChange={(e) => setAdditionalInstructions(e.target.value)}
+                    placeholder="Add any specific instructions for the AI (e.g., 'Emphasize leadership skills', 'Focus on metrics')"
+                    rows={3}
+                  />
+                  <div className="ai-modal-actions">
+                    <button className="btn-decline" onClick={declineAISuggestions}>
+                      Cancel
+                    </button>
+                    <button className="btn-generate" onClick={adjustWithAI} disabled={isLoadingAI}>
+                      Generate Suggestions
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2738,7 +2926,9 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
         }
 
         .btn-decline,
-        .btn-accept {
+        .btn-accept,
+        .btn-regenerate,
+        .btn-generate {
           padding: 10px 20px;
           border-radius: 8px;
           font-size: 0.875rem;
@@ -2756,6 +2946,22 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
         .btn-decline:hover {
           background: var(--bg-hover);
           color: var(--text-primary);
+        }
+
+        .btn-regenerate, .btn-generate {
+          background: var(--bg-tertiary);
+          color: var(--accent-primary);
+          border: 1px solid var(--accent-primary);
+        }
+
+        .btn-regenerate:hover:not(:disabled), .btn-generate:hover:not(:disabled) {
+          background: var(--accent-glow);
+          color: var(--accent-secondary);
+        }
+
+        .btn-regenerate:disabled, .btn-generate:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .btn-accept {
