@@ -864,6 +864,8 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
   const [suggestedBullets, setSuggestedBullets] = useState<string[]>([])
   const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [editingBulletId, setEditingBulletId] = useState<string | null>(null)
+  const [editingBulletContent, setEditingBulletContent] = useState('')
 
   const copyField = async (field: string, text: string) => {
     try {
@@ -964,6 +966,32 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
     }
   }
 
+  const startEditBullet = (bulletId: string, content: string) => {
+    setEditingBulletId(bulletId)
+    setEditingBulletContent(content)
+  }
+
+  const cancelEditBullet = () => {
+    setEditingBulletId(null)
+    setEditingBulletContent('')
+  }
+
+  const saveBullet = async (bulletId: string) => {
+    if (!editingBulletContent.trim()) return
+    try {
+      await fetch(`${apiUrl}/bullets/${bulletId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editingBulletContent.trim() })
+      })
+      setEditingBulletId(null)
+      setEditingBulletContent('')
+      onUpdate()
+    } catch (error) {
+      console.error('Failed to update bullet:', error)
+    }
+  }
+
   const adjustWithAI = async () => {
     if (!jobDescription || !entry.bullets || entry.bullets.length === 0) {
       return
@@ -1037,6 +1065,7 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
 
   // Ref to store textarea elements for auto-resize
   const textareaRefs = useRef<(HTMLTextAreaElement | null)[]>([])
+  const bulletEditTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Auto-resize textareas when suggestions load or change
   useEffect(() => {
@@ -1048,6 +1077,13 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
       })
     }
   }, [suggestedBullets, showAIModal])
+
+  // Auto-resize bullet edit textarea when editing starts or content changes
+  useEffect(() => {
+    if (editingBulletId && bulletEditTextareaRef.current) {
+      autoResizeTextarea(bulletEditTextareaRef.current)
+    }
+  }, [editingBulletId, editingBulletContent])
 
   const declineAISuggestions = () => {
     setShowAIModal(false)
@@ -1259,10 +1295,69 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
         <ul className="bullets-list">
           {entry.bullets?.map((bullet) => (
             <li key={bullet.id}>
-              <span>{bullet.content}</span>
-              <button className="delete-bullet" onClick={() => deleteBullet(bullet.id)}>
-                <X size={10} />
-              </button>
+              {editingBulletId === bullet.id ? (
+                <div className="bullet-edit">
+                  <textarea
+                    ref={bulletEditTextareaRef}
+                    value={editingBulletContent}
+                    onChange={(e) => {
+                      setEditingBulletContent(e.target.value)
+                      autoResizeTextarea(e.target)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault()
+                        saveBullet(bullet.id)
+                      } else if (e.key === 'Escape') {
+                        cancelEditBullet()
+                      }
+                    }}
+                    autoFocus
+                    className="bullet-edit-input"
+                    rows={1}
+                  />
+                  <button 
+                    className="bullet-save" 
+                    onClick={() => saveBullet(bullet.id)}
+                    title="Save"
+                  >
+                    <Save size={12} />
+                  </button>
+                  <button 
+                    className="bullet-cancel" 
+                    onClick={cancelEditBullet}
+                    title="Cancel"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span 
+                    className="bullet-content"
+                    onClick={() => startEditBullet(bullet.id, bullet.content)}
+                    title="Click to edit"
+                  >
+                    {bullet.content}
+                  </span>
+                  <div className="bullet-actions">
+                    <button 
+                      className="edit-bullet" 
+                      onClick={() => startEditBullet(bullet.id, bullet.content)}
+                      title="Edit bullet"
+                    >
+                      <Edit3 size={10} />
+                    </button>
+                    <button 
+                      className="delete-bullet" 
+                      onClick={() => deleteBullet(bullet.id)}
+                      title="Delete bullet"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -1766,19 +1861,103 @@ function EntryCard({ entry, onUpdate, apiUrl, formatDate, jobDescription }: Entr
           flex: 1;
         }
 
-        .delete-bullet {
-          opacity: 0;
-          padding: 2px;
-          color: var(--text-muted);
-          transition: all var(--transition-fast);
+        .bullet-content {
+          flex: 1;
+          cursor: pointer;
+          padding: 2px 4px;
+          margin: -2px -4px;
+          border-radius: var(--radius-sm);
+          transition: background var(--transition-fast);
         }
 
-        .bullets-list li:hover .delete-bullet {
+        .bullet-content:hover {
+          background: var(--bg-hover);
+        }
+
+        .bullet-actions {
+          display: flex;
+          gap: 4px;
+          opacity: 0;
+          transition: opacity var(--transition-fast);
+        }
+
+        .bullets-list li:hover .bullet-actions {
           opacity: 1;
+        }
+
+        .edit-bullet,
+        .delete-bullet {
+          padding: 2px;
+          color: var(--text-muted);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .edit-bullet:hover {
+          color: var(--accent-primary);
+          background: var(--bg-hover);
         }
 
         .delete-bullet:hover {
           color: var(--accent-danger);
+          background: var(--bg-hover);
+        }
+
+        .bullet-edit {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          flex: 1;
+        }
+
+        .bullet-edit-input {
+          flex: 1;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-sm);
+          padding: var(--space-xs) var(--space-sm);
+          font-size: 0.85rem;
+          color: var(--text-primary);
+          font-family: inherit;
+          resize: none;
+          overflow: hidden;
+          min-height: 24px;
+          line-height: 1.5;
+        }
+
+        .bullet-edit-input:focus {
+          outline: none;
+          border-color: var(--accent-secondary);
+          box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        .bullet-save,
+        .bullet-cancel {
+          padding: 4px;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: var(--text-muted);
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .bullet-save:hover {
+          color: var(--accent-success, #22c55e);
+          background: var(--bg-hover);
+        }
+
+        .bullet-cancel:hover {
+          color: var(--accent-danger);
+          background: var(--bg-hover);
         }
 
         .add-bullet {
