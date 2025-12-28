@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File, Eye, Briefcase } from 'lucide-react'
+import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File, Eye, Briefcase, Focus } from 'lucide-react'
 import React, { useState, useRef, useEffect } from 'react'
 import { Resume } from '../types'
 import { ResumeTemplate } from './ResumePreview'
@@ -19,9 +19,11 @@ interface HeaderProps {
   resumeContentRef: React.RefObject<HTMLDivElement> | null
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
+  isFocusMode: boolean
+  onFocusModeChange: (enabled: boolean) => void
 }
 
-export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange }: HeaderProps) {
+export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange, isFocusMode, onFocusModeChange }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -434,6 +436,13 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           </div>
         )}
         <button 
+          className={`focus-mode-btn ${isFocusMode ? 'active' : ''}`}
+          onClick={() => onFocusModeChange(!isFocusMode)}
+          title="Focus Mode - Hide UI for side-by-side editing"
+        >
+          <Focus size={18} />
+        </button>
+        <button 
           className="settings-btn"
           onClick={onOpenSettings}
           title="Settings"
@@ -651,6 +660,37 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
 
         .template-select-header:hover {
           color: var(--accent-primary);
+        }
+
+        .focus-mode-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 150ms ease;
+        }
+
+        .focus-mode-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--border-hover);
+          color: var(--text-primary);
+        }
+
+        .focus-mode-btn.active {
+          background: var(--accent-glow);
+          border-color: var(--accent-primary);
+          color: var(--accent-primary);
+        }
+
+        .focus-mode-btn.active:hover {
+          background: var(--accent-primary);
+          color: white;
         }
 
         .settings-btn {

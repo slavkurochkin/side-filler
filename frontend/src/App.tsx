@@ -28,6 +28,10 @@ function App() {
   const [showTitleModal, setShowTitleModal] = useState(false)
   const [titleInput, setTitleInput] = useState('')
   const titleInputRef = useRef<HTMLInputElement>(null)
+  const [isFocusMode, setIsFocusMode] = useState(() => {
+    const saved = localStorage.getItem('focus-mode')
+    return saved === 'true'
+  })
 
 
   // Load template from localStorage
@@ -37,6 +41,25 @@ function App() {
       setTemplate(saved as ResumeTemplate)
     }
   }, [])
+
+  // Save focus mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('focus-mode', String(isFocusMode))
+  }, [isFocusMode])
+
+  // Keyboard shortcut to exit focus mode (Esc key)
+  useEffect(() => {
+    if (!isFocusMode) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFocusMode(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isFocusMode])
 
   const handleTemplateChange = (newTemplate: ResumeTemplate) => {
     setTemplate(newTemplate)
@@ -238,20 +261,24 @@ function App() {
 
   return (
     <div className="app">
-      <Header 
-        resumes={resumes}
-        selectedResumeId={selectedResumeId}
-        selectedResume={selectedResume}
-        onSelectResume={setSelectedResumeId}
-        onCreateResume={handleCreateResume}
-        onDeleteResume={handleDeleteResume}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        template={template}
-        onTemplateChange={handleTemplateChange}
-        resumeContentRef={resumeContentRef}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-      />
+      {!isFocusMode && (
+        <Header 
+          resumes={resumes}
+          selectedResumeId={selectedResumeId}
+          selectedResume={selectedResume}
+          onSelectResume={setSelectedResumeId}
+          onCreateResume={handleCreateResume}
+          onDeleteResume={handleDeleteResume}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          template={template}
+          onTemplateChange={handleTemplateChange}
+          resumeContentRef={resumeContentRef}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          isFocusMode={isFocusMode}
+          onFocusModeChange={setIsFocusMode}
+        />
+      )}
 
       <Settings 
         isOpen={isSettingsOpen}
@@ -327,13 +354,13 @@ function App() {
       
       <main 
         id="main-container"
-        className="main-container"
+        className={`main-container ${isFocusMode ? 'focus-mode' : ''}`}
         style={{ cursor: isDragging ? 'col-resize' : 'default' }}
       >
         <AnimatePresence mode="wait">
           <motion.div 
             className="panel left-panel"
-            style={{ width: `${leftPanelWidth}%` }}
+            style={{ width: isFocusMode ? '100%' : `${leftPanelWidth}%` }}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3 }}
@@ -347,56 +374,76 @@ function App() {
           </motion.div>
         </AnimatePresence>
 
-        <div 
-          className={`resize-handle ${isDragging ? 'active' : ''}`}
-          onMouseDown={handleResizeStart}
-        >
-          <div className="resize-indicator" />
-        </div>
+        {!isFocusMode && (
+          <>
+            <div 
+              className={`resize-handle ${isDragging ? 'active' : ''}`}
+              onMouseDown={handleResizeStart}
+            >
+              <div className="resize-indicator" />
+            </div>
 
-        <motion.div 
-          className="panel right-panel"
-          style={{ width: `${100 - leftPanelWidth}%` }}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <AnimatePresence mode="wait">
-            {viewMode === 'preview' ? (
-              <motion.div
-                key="preview"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                style={{ height: '100%' }}
-              >
-                <ResumePreview 
-                  resume={selectedResume} 
-                  template={template} 
-                  resumeContentRef={resumeContentRef}
-                  apiUrl={API_URL}
-                  onUpdate={fetchResumeDetails}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="job-description"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-              >
-                <JobDescription 
-                  resumeId={selectedResumeId}
-                  onJobDescriptionChange={setCurrentJobDescription}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+            <motion.div 
+              className="panel right-panel"
+              style={{ width: `${100 - leftPanelWidth}%` }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            >
+              <AnimatePresence mode="wait">
+                {viewMode === 'preview' ? (
+                  <motion.div
+                    key="preview"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ height: '100%' }}
+                  >
+                    <ResumePreview 
+                      resume={selectedResume} 
+                      template={template} 
+                      resumeContentRef={resumeContentRef}
+                      apiUrl={API_URL}
+                      onUpdate={fetchResumeDetails}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="job-description"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                  >
+                    <JobDescription 
+                      resumeId={selectedResumeId}
+                      onJobDescriptionChange={setCurrentJobDescription}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </>
+        )}
       </main>
+
+      {isFocusMode && (
+        <motion.button
+          className="exit-focus-mode-btn"
+          onClick={() => setIsFocusMode(false)}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          title="Exit Focus Mode (Press Esc)"
+        >
+          <X size={18} />
+          <span>Exit Focus Mode</span>
+        </motion.button>
+      )}
 
       <style>{`
         .app {
@@ -617,6 +664,41 @@ function App() {
         .btn-create:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .main-container.focus-mode {
+          height: 100vh;
+        }
+
+        .exit-focus-mode-btn {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 1000;
+          transition: all 150ms ease;
+        }
+
+        .exit-focus-mode-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--accent-primary);
+          color: var(--accent-primary);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .exit-focus-mode-btn svg {
+          flex-shrink: 0;
         }
       `}</style>
     </div>
