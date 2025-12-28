@@ -379,7 +379,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span>{resume.website || 'Add website'}</span>
+                  <span className={resume.website ? '' : 'placeholder-text'}>{resume.website || 'Add website URL'}</span>
                 )}
               </span>
               <span 
@@ -399,7 +399,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span>{resume.linkedin || 'Add LinkedIn'}</span>
+                  <span className={resume.linkedin ? '' : 'placeholder-text'}>{resume.linkedin ? resume.linkedin.replace(/^https?:\/\//, '') : 'Add LinkedIn URL'}</span>
                 )}
               </span>
               <span 
@@ -419,7 +419,7 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span>{resume.github || 'Add GitHub'}</span>
+                  <span className={resume.github ? '' : 'placeholder-text'}>{resume.github ? resume.github.replace(/^https?:\/\//, '') : 'Add GitHub URL'}</span>
                 )}
               </span>
             </div>
@@ -751,6 +751,11 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           padding: 2px 6px;
           font-size: 0.875rem;
           color: var(--text-primary);
+        }
+
+        .contact-item .placeholder-text {
+          color: var(--text-muted);
+          font-style: italic;
         }
 
         .edit-inline {

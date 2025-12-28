@@ -44,6 +44,86 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       
       const element = resumeContentRef.current
       
+      // Collect link information before capturing
+      interface LinkInfo {
+        url: string
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      
+      const links: LinkInfo[] = []
+      
+      // Helper to normalize URLs - just ensure protocol is present, preserve everything else
+      const normalizeUrl = (url: string | undefined, type: 'website' | 'linkedin' | 'github'): string | null => {
+        if (!url) return null
+        let normalized = url.trim()
+        if (!normalized) return null
+        
+        // If URL already has protocol, use it as-is
+        if (normalized.match(/^https?:\/\//)) {
+          return normalized
+        }
+        
+        // Add protocol if missing
+        // For URLs that already contain the domain, just add https://
+        if (normalized.includes('linkedin.com') || normalized.includes('github.com') || normalized.includes('.')) {
+          return `https://${normalized}`
+        }
+        
+        // For simple usernames, construct the full URL
+        if (type === 'linkedin') {
+          return `https://www.linkedin.com/in/${normalized.replace(/^\/+|\/+$/g, '')}`
+        } else if (type === 'github') {
+          return `https://github.com/${normalized.replace(/^\/+|\/+$/g, '')}`
+        } else {
+          return `https://${normalized}`
+        }
+      }
+      
+      // Get element dimensions once for coordinate conversion
+      const elementRect = element.getBoundingClientRect()
+      const elementWidth = elementRect.width
+      const elementHeight = elementRect.height
+      
+      // Find contact link elements and their positions
+      // Match links in order: website, linkedin, github (matching the render order in ResumePreview)
+      const availableUrls: Array<{url: string | undefined, type: 'website' | 'linkedin' | 'github'}> = []
+      if (selectedResume.website) {
+        availableUrls.push({ url: selectedResume.website, type: 'website' })
+      }
+      if (selectedResume.linkedin) {
+        availableUrls.push({ url: selectedResume.linkedin, type: 'linkedin' })
+      }
+      if (selectedResume.github) {
+        availableUrls.push({ url: selectedResume.github, type: 'github' })
+      }
+      
+      const contactLinks = Array.from(element.querySelectorAll('.contact-link')) as HTMLElement[]
+      contactLinks.forEach((linkElement, index) => {
+        if (index < availableUrls.length) {
+          const urlInfo = availableUrls[index]
+          const normalizedUrl = normalizeUrl(urlInfo.url, urlInfo.type)
+          
+          if (normalizedUrl) {
+            const rect = linkElement.getBoundingClientRect()
+            
+            // Get position relative to the resume content element
+            const x = rect.left - elementRect.left
+            const y = rect.top - elementRect.top
+            
+            links.push({
+              url: normalizedUrl,
+              x,
+              y,
+              width: rect.width,
+              height: rect.height
+            })
+          }
+        }
+      })
+      
       // Hide page indicators and numbers during export
       element.classList.add('exporting')
       
@@ -62,20 +142,69 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
-      const imgWidth = 210
-      const pageHeight = 297
+      const imgWidth = 210 // A4 width in mm
+      const pageHeight = 297 // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width
+      
+      // Calculate scale factors: PDF mm per CSS pixel
+      // html2canvas with scale:2 creates a canvas 2x larger, but coordinates match CSS pixels
+      const scaleX = imgWidth / elementWidth
+      const scaleY = imgHeight / elementHeight
+      
+      // Convert CSS pixels to PDF mm
+      const pxToMm = (px: number, isY: boolean = false) => {
+        return isY ? (px * scaleY) : (px * scaleX)
+      }
+      
+      // Convert link positions from CSS pixels to PDF mm
+      const linkPositions = links.map(link => ({
+        url: link.url,
+        x: pxToMm(link.x, false),
+        y: pxToMm(link.y, true),
+        width: pxToMm(link.width, false),
+        height: pxToMm(link.height, true)
+      }))
+      
       let heightLeft = imgHeight
       let position = 0
+      let currentPage = 0
       
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      
+      // Add links to the first page
+      linkPositions.forEach(link => {
+        // Check if link is visible on this page (page 0)
+        if (link.y >= 0 && link.y < pageHeight) {
+          pdf.link(link.x, link.y, link.width, link.height, { url: link.url })
+        }
+      })
+      
       heightLeft -= pageHeight
+      currentPage++
       
       while (heightLeft >= 0) {
         position = heightLeft - imgHeight
         pdf.addPage()
         pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        
+        // Add links to this page
+        // Since the image is positioned at 'position' (negative), links that are
+        // at Y positions from (currentPage * pageHeight) to ((currentPage + 1) * pageHeight)
+        // will be visible on this page, but their Y coordinate relative to the page top
+        // is link.y - (currentPage * pageHeight)
+        linkPositions.forEach(link => {
+          const pageStartY = currentPage * pageHeight
+          const pageEndY = (currentPage + 1) * pageHeight
+          
+          // Check if link is visible on this page
+          if (link.y >= pageStartY && link.y < pageEndY) {
+            const linkYOnPage = link.y - pageStartY
+            pdf.link(link.x, linkYOnPage, link.width, link.height, { url: link.url })
+          }
+        })
+        
         heightLeft -= pageHeight
+        currentPage++
       }
       
       pdf.save(`${selectedResume.name || 'resume'}.pdf`)

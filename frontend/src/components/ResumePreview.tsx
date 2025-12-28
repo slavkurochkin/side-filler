@@ -677,6 +677,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
 
         .contact-row {
           display: flex;
+          justify-content: center;
           gap: 1.5rem;
           flex-wrap: wrap;
           margin-bottom: 1rem;
