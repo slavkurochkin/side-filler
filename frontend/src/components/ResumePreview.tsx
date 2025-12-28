@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { Mail, Phone, MapPin, Calendar, Globe, Linkedin, Github } from 'lucide-react'
 import { Resume } from '../types'
 import React, { useState, useEffect, useRef } from 'react'
-import { loadThemeColor } from './Settings'
+import { loadThemeColor, loadSkillsDisplayMode, SkillsDisplayMode } from './Settings'
 
 export type ResumeTemplate = 'classic' | 'modern' | 'minimal'
 
@@ -16,6 +16,7 @@ interface ResumePreviewProps {
 
 export function ResumePreview({ resume, template, resumeContentRef: externalRef, apiUrl, onUpdate }: ResumePreviewProps) {
   const [themeColor, setThemeColor] = useState<string>('#6366f1')
+  const [skillsDisplayMode, setSkillsDisplayMode] = useState<SkillsDisplayMode>('badges')
   const [totalPages, setTotalPages] = useState<number>(1)
   const [editingField, setEditingField] = useState<string | null>(null)
   const internalRef = useRef<HTMLDivElement>(null)
@@ -23,23 +24,31 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
 
   useEffect(() => {
     const color = loadThemeColor()
+    const mode = loadSkillsDisplayMode()
     setThemeColor(color)
+    setSkillsDisplayMode(mode)
     document.documentElement.style.setProperty('--resume-accent-color', color)
     
-    // Listen for theme color changes
+    // Listen for theme color and skills display mode changes
     const handleStorageChange = () => {
       const newColor = loadThemeColor()
+      const newMode = loadSkillsDisplayMode()
       setThemeColor(newColor)
+      setSkillsDisplayMode(newMode)
       document.documentElement.style.setProperty('--resume-accent-color', newColor)
     }
     window.addEventListener('storage', handleStorageChange)
     
     // Also check periodically for changes (in case same window)
     const interval = setInterval(() => {
-      const current = loadThemeColor()
-      if (current !== color) {
-        setThemeColor(current)
-        document.documentElement.style.setProperty('--resume-accent-color', current)
+      const currentColor = loadThemeColor()
+      const currentMode = loadSkillsDisplayMode()
+      if (currentColor !== themeColor) {
+        setThemeColor(currentColor)
+        document.documentElement.style.setProperty('--resume-accent-color', currentColor)
+      }
+      if (currentMode !== skillsDisplayMode) {
+        setSkillsDisplayMode(currentMode)
       }
     }, 100)
     
@@ -47,7 +56,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
       window.removeEventListener('storage', handleStorageChange)
       clearInterval(interval)
     }
-  }, [])
+  }, [themeColor, skillsDisplayMode])
 
   useEffect(() => {
     document.documentElement.style.setProperty('--resume-accent-color', themeColor)
@@ -429,17 +438,49 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
                 <div className="section-divider" />
                 
                 {isSkillsSection ? (
-                  <div className="skills-badges">
-                    {sections?.flatMap(section => 
-                      section.entries?.flatMap(entry =>
-                        entry.bullets?.map((bullet) => (
-                          <span key={bullet.id} className="skill-badge">
-                            {bullet.content}
-                          </span>
-                        )) || []
-                      ) || []
-                    )}
-                  </div>
+                  skillsDisplayMode === 'badges' ? (
+                    <div className="skills-badges">
+                      {sections?.flatMap(section => 
+                        section.entries?.flatMap(entry =>
+                          entry.bullets?.map((bullet) => (
+                            <span 
+                              key={bullet.id} 
+                              className="skill-badge editable-field"
+                              contentEditable={!!apiUrl}
+                              suppressContentEditableWarning
+                              onFocus={() => handleFocus('content', entry.id, bullet.id)}
+                              onBlur={(e) => apiUrl && handleBlur(e, 'content', entry.id, bullet.id)}
+                              onKeyDown={handleKeyDown}
+                              title={apiUrl ? 'Click to edit' : undefined}
+                            >
+                              {bullet.content}
+                            </span>
+                          )) || []
+                        ) || []
+                      )}
+                    </div>
+                  ) : (
+                    <ul className="skills-bullets">
+                      {sections?.flatMap(section => 
+                        section.entries?.flatMap(entry =>
+                          entry.bullets?.map((bullet) => (
+                            <li 
+                              key={bullet.id} 
+                              className="skill-bullet editable-field"
+                              contentEditable={!!apiUrl}
+                              suppressContentEditableWarning
+                              onFocus={() => handleFocus('content', entry.id, bullet.id)}
+                              onBlur={(e) => apiUrl && handleBlur(e, 'content', entry.id, bullet.id)}
+                              onKeyDown={handleKeyDown}
+                              title={apiUrl ? 'Click to edit' : undefined}
+                            >
+                              {bullet.content}
+                            </li>
+                          )) || []
+                        ) || []
+                      )}
+                    </ul>
+                  )
                 ) : (
                   <div className="entries">
                     {sections?.flatMap(section => 
@@ -864,6 +905,34 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
           z-index: -1;
         }
 
+        .skills-bullets {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0.375rem 1rem;
+          list-style: none;
+          padding: 0;
+          margin: 0.5rem 0 0 0;
+        }
+
+        .skill-bullet {
+          position: relative;
+          padding-left: 1.25rem;
+          font-size: 0.9rem;
+          color: #475569;
+          line-height: 1.6;
+        }
+
+        .skill-bullet::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0.6em;
+          width: 5px;
+          height: 5px;
+          background: var(--resume-accent-color);
+          border-radius: 50%;
+        }
+
         .no-sections {
           text-align: center;
           padding: 3rem;
@@ -1014,6 +1083,25 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
         .template-minimal .skill-badge::before {
           background-color: #cbd5e1;
           opacity: 0.1;
+        }
+
+        /* Skill bullets template styles */
+        .template-modern .skill-bullet::before {
+          background: #0f172a;
+          width: 6px;
+          height: 6px;
+        }
+
+        .template-minimal .skill-bullet {
+          font-size: 0.875rem;
+          line-height: 1.8;
+          color: #475569;
+        }
+
+        .template-minimal .skill-bullet::before {
+          background: #cbd5e1;
+          width: 4px;
+          height: 4px;
         }
 
         /* Print styles */

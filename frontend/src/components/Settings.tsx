@@ -70,9 +70,30 @@ export function saveThemeColor(color: string): void {
   }
 }
 
+export type SkillsDisplayMode = 'badges' | 'bullets'
+
+export function loadSkillsDisplayMode(): SkillsDisplayMode {
+  try {
+    const stored = localStorage.getItem('skills-display-mode')
+    return (stored === 'badges' || stored === 'bullets') ? stored : 'badges'
+  } catch (e) {
+    console.error('Failed to load skills display mode:', e)
+    return 'badges'
+  }
+}
+
+export function saveSkillsDisplayMode(mode: SkillsDisplayMode): void {
+  try {
+    localStorage.setItem('skills-display-mode', mode)
+  } catch (e) {
+    console.error('Failed to save skills display mode:', e)
+  }
+}
+
 export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS)
   const [themeColor, setThemeColor] = useState<string>('#6366f1')
+  const [skillsDisplayMode, setSkillsDisplayMode] = useState<SkillsDisplayMode>('badges')
   const [openaiKey, setOpenaiKey] = useState<string>('')
   const [originalOpenaiKey, setOriginalOpenaiKey] = useState<string>('')
   const [openaiModel, setOpenaiModel] = useState<string>('gpt-4o-mini')
@@ -91,6 +112,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
     if (isOpen) {
       setSettings(loadSettings())
       setThemeColor(loadThemeColor())
+      setSkillsDisplayMode(loadSkillsDisplayMode())
       fetchOpenAIKey()
       fetchOpenAIModel()
     }
@@ -161,6 +183,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
   const handleSave = async () => {
     saveSettings(settings)
     saveThemeColor(themeColor)
+    saveSkillsDisplayMode(skillsDisplayMode)
     
     // Save OpenAI key and model to backend
     try {
@@ -420,6 +443,39 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
                   </div>
                 </div>
               </div>
+
+              <div className="settings-section">
+                <h3>Skills Display Mode</h3>
+                <p className="section-desc">
+                  Choose how skills are displayed in the resume preview
+                </p>
+
+                <div className="form-group">
+                  <label>
+                    Display Format
+                  </label>
+                  <div className="toggle-group">
+                    <button
+                      className={`toggle-option ${skillsDisplayMode === 'badges' ? 'active' : ''}`}
+                      onClick={() => {
+                        setSkillsDisplayMode('badges')
+                        saveSkillsDisplayMode('badges')
+                      }}
+                    >
+                      Badge Labels
+                    </button>
+                    <button
+                      className={`toggle-option ${skillsDisplayMode === 'bullets' ? 'active' : ''}`}
+                      onClick={() => {
+                        setSkillsDisplayMode('bullets')
+                        saveSkillsDisplayMode('bullets')
+                      }}
+                    >
+                      3 Column Bullets
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="settings-footer">
@@ -615,6 +671,36 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
             .form-group textarea {
               resize: vertical;
               min-height: 80px;
+            }
+
+            .toggle-group {
+              display: flex;
+              gap: 8px;
+            }
+
+            .toggle-option {
+              flex: 1;
+              padding: 10px 16px;
+              background: var(--bg-tertiary);
+              border: 1px solid var(--border-default);
+              border-radius: 8px;
+              color: var(--text-secondary);
+              font-size: 0.875rem;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 150ms ease;
+            }
+
+            .toggle-option:hover {
+              background: var(--bg-hover);
+              border-color: var(--border-hover);
+              color: var(--text-primary);
+            }
+
+            .toggle-option.active {
+              background: var(--accent-glow);
+              border-color: var(--accent-primary);
+              color: var(--accent-primary);
             }
 
             .settings-footer {
