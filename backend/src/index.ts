@@ -146,37 +146,16 @@ async function ensureJobDescriptionsTable() {
       // Enable UUID extension
       await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
       
-      // Create table
+      // Create table without resume_id (job descriptions are now global)
       await pool.query(`
         CREATE TABLE job_descriptions (
           id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-          resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
           content TEXT NOT NULL,
           title VARCHAR(500),
           job_posting_url TEXT,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
-      `);
-      
-      // Add job_posting_url column if table exists but column doesn't
-      await pool.query(`
-        DO $$ 
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'job_descriptions' 
-            AND column_name = 'job_posting_url'
-          ) THEN
-            ALTER TABLE job_descriptions ADD COLUMN job_posting_url TEXT;
-          END IF;
-        END $$;
-      `);
-      
-      // Create index
-      await pool.query(`
-        CREATE INDEX idx_job_descriptions_resume_id 
-        ON job_descriptions(resume_id)
       `);
       
       // Create trigger function if it doesn't exist
@@ -205,6 +184,40 @@ async function ensureJobDescriptionsTable() {
       console.log('✅ job_descriptions table created successfully');
     } else {
       console.log('✅ job_descriptions table already exists');
+      
+      // Migration: Remove resume_id column if it exists (making job descriptions global)
+      try {
+        const resumeIdExists = await pool.query(`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'job_descriptions' 
+            AND column_name = 'resume_id'
+          )
+        `);
+        
+        if (resumeIdExists.rows[0].exists) {
+          console.log('🔄 Migrating job_descriptions: removing resume_id column...');
+          
+          // Drop the index first
+          await pool.query('DROP INDEX IF EXISTS idx_job_descriptions_resume_id');
+          
+          // Drop the foreign key constraint
+          await pool.query(`
+            ALTER TABLE job_descriptions 
+            DROP CONSTRAINT IF EXISTS job_descriptions_resume_id_fkey
+          `);
+          
+          // Remove the resume_id column
+          await pool.query(`
+            ALTER TABLE job_descriptions 
+            DROP COLUMN IF EXISTS resume_id
+          `);
+          
+          console.log('✅ Successfully removed resume_id from job_descriptions table');
+        }
+      } catch (error) {
+        console.error('⚠️ Error migrating job_descriptions table:', error);
+      }
       
       // Ensure job_posting_url column exists (for existing tables)
       try {

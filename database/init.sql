@@ -67,10 +67,9 @@ CREATE TABLE saved_urls (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Job Descriptions table (for storing job descriptions)
+-- Job Descriptions table (for storing job descriptions - available for all resumes)
 CREATE TABLE job_descriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     title VARCHAR(500),
     job_posting_url TEXT,
@@ -84,7 +83,6 @@ CREATE INDEX idx_entries_section_id ON entries(section_id);
 CREATE INDEX idx_bullets_entry_id ON bullets(entry_id);
 CREATE INDEX idx_saved_urls_resume_id ON saved_urls(resume_id);
 CREATE INDEX idx_saved_urls_status ON saved_urls(status);
-CREATE INDEX idx_job_descriptions_resume_id ON job_descriptions(resume_id);
 
 -- Trigger function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

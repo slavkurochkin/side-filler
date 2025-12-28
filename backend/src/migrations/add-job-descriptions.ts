@@ -9,22 +9,16 @@ export async function addJobDescriptionsTable() {
     // Enable UUID extension
     await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
     
-    // Create job_descriptions table
+    // Create job_descriptions table (job descriptions are now global, not tied to resumes)
     await client.query(`
       CREATE TABLE IF NOT EXISTS job_descriptions (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
         content TEXT NOT NULL,
         title VARCHAR(500),
+        job_posting_url TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
-    `);
-    
-    // Create index
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_job_descriptions_resume_id 
-      ON job_descriptions(resume_id)
     `);
     
     // Create trigger function

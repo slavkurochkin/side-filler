@@ -5,9 +5,9 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create job_descriptions table if it doesn't exist
+-- Note: Job descriptions are now global (not tied to specific resumes)
 CREATE TABLE IF NOT EXISTS job_descriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    resume_id UUID REFERENCES resumes(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     title VARCHAR(500),
     job_posting_url TEXT,
@@ -30,8 +30,7 @@ BEGIN
   END IF;
 END $$;
 
--- Create index if it doesn't exist
-CREATE INDEX IF NOT EXISTS idx_job_descriptions_resume_id ON job_descriptions(resume_id);
+-- Note: No index needed for resume_id since job descriptions are now global
 
 -- Create trigger function if it doesn't exist
 CREATE OR REPLACE FUNCTION update_updated_at_column()

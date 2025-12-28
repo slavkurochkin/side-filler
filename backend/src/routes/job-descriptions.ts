@@ -3,14 +3,11 @@ import { pool } from '../db.js';
 
 const router = Router();
 
-// Get all job descriptions for a resume
-router.get('/resume/:resumeId', async (req: Request, res: Response) => {
+// Get all job descriptions (available for all resumes)
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const { resumeId } = req.params;
-    
     const result = await pool.query(
-      'SELECT * FROM job_descriptions WHERE resume_id = $1 ORDER BY updated_at DESC',
-      [resumeId]
+      'SELECT * FROM job_descriptions ORDER BY updated_at DESC'
     );
     
     res.json(result.rows);
@@ -41,31 +38,24 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Create a new job description for a resume
+// Create a new job description (available for all resumes)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { resume_id, content, title, job_posting_url } = req.body;
+    const { content, title, job_posting_url } = req.body;
     
-    console.log('POST /job-descriptions - Request body:', { resume_id, contentLength: content?.length, title, job_posting_url });
+    console.log('POST /job-descriptions - Request body:', { contentLength: content?.length, title, job_posting_url });
     
-    if (!resume_id || !content) {
-      console.error('Missing required fields:', { resume_id: !!resume_id, content: !!content });
-      return res.status(400).json({ error: 'resume_id and content are required' });
+    if (!content) {
+      console.error('Missing required fields:', { content: !!content });
+      return res.status(400).json({ error: 'content is required' });
     }
     
-    // Validate resume_id exists
-    const resumeCheck = await pool.query('SELECT id FROM resumes WHERE id = $1', [resume_id]);
-    if (resumeCheck.rows.length === 0) {
-      console.error('Resume not found:', resume_id);
-      return res.status(404).json({ error: 'Resume not found' });
-    }
-    
-    // Always create a new job description
+    // Create a new job description (no resume_id needed)
     const result = await pool.query(
-      `INSERT INTO job_descriptions (resume_id, content, title, job_posting_url)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO job_descriptions (content, title, job_posting_url)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [resume_id, content, title || null, job_posting_url || null]
+      [content, title || null, job_posting_url || null]
     );
     
     console.log('Successfully saved job description:', result.rows[0].id);
@@ -78,9 +68,6 @@ router.post('/', async (req: Request, res: Response) => {
       // Check if it's a database error
       if (error.message.includes('relation') && error.message.includes('does not exist')) {
         return res.status(500).json({ error: 'Database table not found. Please run database migrations.', details: error.message });
-      }
-      if (error.message.includes('violates foreign key constraint')) {
-        return res.status(400).json({ error: 'Invalid resume_id', details: error.message });
       }
     }
     res.status(500).json({ error: 'Failed to save job description', details: error instanceof Error ? error.message : 'Unknown error' });

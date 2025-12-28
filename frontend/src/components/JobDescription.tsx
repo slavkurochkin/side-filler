@@ -5,7 +5,6 @@ const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 interface JobDescriptionData {
   id: string
-  resume_id: string
   content: string
   title: string | null
   job_posting_url: string | null
@@ -14,11 +13,11 @@ interface JobDescriptionData {
 }
 
 interface JobDescriptionProps {
-  resumeId: string | null
+  resumeId?: string | null
   onJobDescriptionChange?: (description: string | null) => void
 }
 
-export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescriptionProps) {
+export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: JobDescriptionProps) {
   const [jobDescription, setJobDescription] = useState('')
   const [jobPostingUrl, setJobPostingUrl] = useState('')
   const [copied, setCopied] = useState(false)
@@ -66,25 +65,11 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
     }
   }, [])
 
-  // Load all saved job descriptions when resume changes
+  // Load all saved job descriptions on mount (no longer dependent on resumeId)
   useEffect(() => {
-    if (resumeId) {
-      fetchSavedDescriptions()
-    } else {
-      setSavedDescriptions([])
-      setJobDescription('')
-      setJobPostingUrl('')
-      setSelectedDescriptionId(null)
-      if (onJobDescriptionChange) {
-        onJobDescriptionChange(null)
-      }
-    }
-  }, [resumeId, onJobDescriptionChange])
+    fetchSavedDescriptions()
+  }, [])
 
-  // Debug: Log when component renders
-  useEffect(() => {
-    console.log('JobDescription useEffect - resumeId changed', resumeId, typeof resumeId)
-  }, [resumeId])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -98,10 +83,8 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
   }, [])
 
   const fetchSavedDescriptions = async () => {
-    if (!resumeId) return
-    const resumeIdString = typeof resumeId === 'string' ? resumeId : String(resumeId)
     try {
-      const response = await fetch(`${API_URL}/job-descriptions/resume/${resumeIdString}`)
+      const response = await fetch(`${API_URL}/job-descriptions`)
       if (response.ok) {
         const data = await response.json()
         setSavedDescriptions(data)
@@ -197,7 +180,7 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
   }, [jobDescription, onJobDescriptionChange])
 
   const handleSave = async () => {
-    if (!resumeId || !jobDescription.trim()) return
+    if (!jobDescription.trim()) return
 
     // If a job description is selected, update it directly
     if (selectedDescriptionId) {
@@ -246,26 +229,15 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
   }
 
   const confirmSave = async () => {
-    if (!resumeId || !jobDescription.trim()) return
-
-    // Ensure resumeId is a string
-    const resumeIdString = typeof resumeId === 'string' ? resumeId : String(resumeId)
-    
-    if (!resumeIdString || resumeIdString === 'null' || resumeIdString === 'undefined') {
-      console.error('Invalid resumeId:', resumeId, typeof resumeId)
-      setSaveStatus('error')
-      setTimeout(() => setSaveStatus('idle'), 2000)
-      return
-    }
+    if (!jobDescription.trim()) return
 
     try {
       setSaveStatus('saving')
-      console.log('Saving job description with resumeId:', resumeIdString)
+      console.log('Saving job description')
       const response = await fetch(`${API_URL}/job-descriptions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          resume_id: resumeIdString,
           content: jobDescription,
           title: saveTitle.trim() || null,
           job_posting_url: jobPostingUrl.trim() || null
@@ -467,7 +439,7 @@ export function JobDescription({ resumeId, onJobDescriptionChange }: JobDescript
           <button
             className="save-btn"
             onClick={handleSave}
-            disabled={!jobDescription.trim() || saveStatus === 'saving' || !resumeId}
+            disabled={!jobDescription.trim() || saveStatus === 'saving'}
             title={selectedDescriptionId ? "Update job description" : "Save job description"}
           >
             <Save size={16} />
