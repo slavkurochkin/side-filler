@@ -6,7 +6,7 @@ import { ResumePreview, ResumeTemplate } from './components/ResumePreview'
 import { JobDescription } from './components/JobDescription'
 import { Header } from './components/Header'
 import { Settings, UserSettings, loadSettings } from './components/Settings'
-import { ApplicationsTracker } from './components/ApplicationsTracker'
+import { ApplicationsTracker } from './components/ApplicationsTracker2'
 import { InsightsAgent } from './components/InsightsAgent'
 import { Resume } from './types'
 
@@ -456,7 +456,15 @@ function App() {
               transition={{ duration: 0.2 }}
               style={{ width: '100%', height: '100%' }}
             >
-              <ApplicationsTracker />
+              {(() => {
+                console.log('🔵 App.tsx: Rendering ApplicationsTracker, currentPage:', currentPage)
+                try {
+                  return <ApplicationsTracker />
+                } catch (error) {
+                  console.error('🔴 Error rendering ApplicationsTracker:', error)
+                  return <div>Error loading Applications Tracker: {String(error)}</div>
+                }
+              })()}
             </motion.div>
           ) : currentPage === 'insights-agent' ? (
             <motion.div

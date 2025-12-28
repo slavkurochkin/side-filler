@@ -11,6 +11,7 @@ import urlRoutes from './routes/urls.js';
 import jobDescriptionRoutes from './routes/job-descriptions.js';
 import settingsRoutes from './routes/settings.js';
 import aiRoutes from './routes/ai.js';
+import applicationsRoutes from './routes/applications.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -246,6 +247,150 @@ async function ensureJobDescriptionsTable() {
   }
 }
 
+// Auto-migration: Check and create applications tracker tables if they don't exist
+async function ensureApplicationsTrackerTables() {
+  try {
+    // Check if job_search_cycles table exists
+    const cyclesTableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'job_search_cycles'
+      )
+    `);
+    
+    if (!cyclesTableExists.rows[0].exists) {
+      console.log('📊 Creating applications tracker tables...');
+      
+      // Enable UUID extension
+      await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+      
+      // Create job_search_cycles table
+      await pool.query(`
+        CREATE TABLE job_search_cycles (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          name VARCHAR(255) NOT NULL,
+          start_date DATE NOT NULL,
+          end_date DATE,
+          is_active BOOLEAN DEFAULT TRUE,
+          notes TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Create applications table
+      await pool.query(`
+        CREATE TABLE applications (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          cycle_id UUID NOT NULL REFERENCES job_search_cycles(id) ON DELETE CASCADE,
+          job_description_id UUID REFERENCES job_descriptions(id) ON DELETE SET NULL,
+          company_name VARCHAR(255) NOT NULL,
+          job_title VARCHAR(255) NOT NULL,
+          status VARCHAR(50) DEFAULT 'applied',
+          applied_date DATE,
+          interview_date DATE,
+          reply_received BOOLEAN, -- NULL = waiting, FALSE = no reply, TRUE = reply received
+          reply_date DATE,
+          notes TEXT,
+          job_posting_url TEXT,
+          salary_range VARCHAR(100),
+          location VARCHAR(255),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Create indexes
+      await pool.query(`
+        CREATE INDEX idx_applications_cycle_id ON applications(cycle_id)
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_applications_job_description_id ON applications(job_description_id)
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_applications_status ON applications(status)
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_applications_applied_date ON applications(applied_date)
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_job_search_cycles_is_active ON job_search_cycles(is_active)
+      `);
+      
+      // Create trigger function if it doesn't exist
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+        END;
+        $$ language 'plpgsql'
+      `);
+      
+      // Create triggers
+      await pool.query(`
+        DROP TRIGGER IF EXISTS update_job_search_cycles_updated_at ON job_search_cycles
+      `);
+      
+      await pool.query(`
+        CREATE TRIGGER update_job_search_cycles_updated_at 
+        BEFORE UPDATE ON job_search_cycles 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column()
+      `);
+      
+      await pool.query(`
+        DROP TRIGGER IF EXISTS update_applications_updated_at ON applications
+      `);
+      
+      await pool.query(`
+        CREATE TRIGGER update_applications_updated_at 
+        BEFORE UPDATE ON applications 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column()
+      `);
+      
+      console.log('✅ Applications tracker tables created successfully');
+    } else {
+      console.log('✅ Applications tracker tables already exist');
+      
+      // Migration: Update reply_received to allow NULL (three states: null=waiting, false=no reply, true=reply received)
+      try {
+        await pool.query(`
+          DO $$ 
+          BEGIN
+            IF EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'applications' 
+              AND column_name = 'reply_received'
+            ) THEN
+              -- Allow NULL values for reply_received
+              ALTER TABLE applications 
+              ALTER COLUMN reply_received DROP NOT NULL;
+              
+              -- Set existing FALSE to NULL if we want to preserve "waiting" state
+              -- For now, we'll keep existing FALSE as FALSE (confirmed no reply)
+              RAISE NOTICE 'Updated reply_received column to allow NULL';
+            END IF;
+          END $$;
+        `);
+        console.log('✅ Verified reply_received column allows NULL');
+      } catch (error) {
+        console.error('⚠️ Error checking reply_received column:', error);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring applications tracker tables:', error);
+    // Don't throw - allow server to start even if migration fails
+  }
+}
+
 // Middleware
 app.use(helmet());
 app.use(cors({
@@ -260,6 +405,7 @@ app.use(express.json());
   await ensureSettingsTable();
   await ensureResumeTitleColumn();
   await ensureJobDescriptionsTable();
+  await ensureApplicationsTrackerTables();
 })();
 
 // Health check
@@ -281,6 +427,7 @@ app.use('/api/urls', urlRoutes);
 app.use('/api/job-descriptions', jobDescriptionRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/applications', applicationsRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
