@@ -6,11 +6,14 @@ import { ResumePreview, ResumeTemplate } from './components/ResumePreview'
 import { JobDescription } from './components/JobDescription'
 import { Header } from './components/Header'
 import { Settings, UserSettings, loadSettings } from './components/Settings'
+import { ApplicationsTracker } from './components/ApplicationsTracker'
+import { InsightsAgent } from './components/InsightsAgent'
 import { Resume } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 type ViewMode = 'preview' | 'job-description'
+type Page = 'resume-builder' | 'applications-tracker' | 'insights-agent'
 
 function App() {
   const [resumes, setResumes] = useState<Resume[]>([])
@@ -32,6 +35,10 @@ function App() {
     const saved = localStorage.getItem('focus-mode')
     return saved === 'true'
   })
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    const saved = localStorage.getItem('current-page')
+    return (saved as Page) || 'resume-builder'
+  })
 
 
   // Load template from localStorage
@@ -46,6 +53,11 @@ function App() {
   useEffect(() => {
     localStorage.setItem('focus-mode', String(isFocusMode))
   }, [isFocusMode])
+
+  // Save current page to localStorage
+  useEffect(() => {
+    localStorage.setItem('current-page', currentPage)
+  }, [currentPage])
 
   // Keyboard shortcut to exit focus mode (Esc key)
   useEffect(() => {
@@ -277,6 +289,8 @@ function App() {
           onViewModeChange={setViewMode}
           isFocusMode={isFocusMode}
           onFocusModeChange={setIsFocusMode}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
         />
       )}
 
@@ -358,75 +372,105 @@ function App() {
         style={{ cursor: isDragging ? 'col-resize' : 'default' }}
       >
         <AnimatePresence mode="wait">
-          <motion.div 
-            className="panel left-panel"
-            style={{ width: isFocusMode ? '100%' : `${leftPanelWidth}%` }}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ResumePanel 
-              resume={selectedResume}
-              onUpdate={fetchResumeDetails}
-              apiUrl={API_URL}
-              jobDescription={currentJobDescription}
-            />
-          </motion.div>
-        </AnimatePresence>
+          {currentPage === 'resume-builder' ? (
+            <>
+              <motion.div 
+                key="resume-builder-left"
+                className="panel left-panel"
+                style={{ width: isFocusMode ? '100%' : `${leftPanelWidth}%` }}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <ResumePanel 
+                  resume={selectedResume}
+                  onUpdate={fetchResumeDetails}
+                  apiUrl={API_URL}
+                  jobDescription={currentJobDescription}
+                />
+              </motion.div>
 
-        {!isFocusMode && (
-          <>
-            <div 
-              className={`resize-handle ${isDragging ? 'active' : ''}`}
-              onMouseDown={handleResizeStart}
-            >
-              <div className="resize-indicator" />
-            </div>
+              {!isFocusMode && (
+                <>
+                  <div 
+                    className={`resize-handle ${isDragging ? 'active' : ''}`}
+                    onMouseDown={handleResizeStart}
+                  >
+                    <div className="resize-indicator" />
+                  </div>
 
-            <motion.div 
-              className="panel right-panel"
-              style={{ width: `${100 - leftPanelWidth}%` }}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
+                  <motion.div 
+                    key="resume-builder-right"
+                    className="panel right-panel"
+                    style={{ width: `${100 - leftPanelWidth}%` }}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                  >
+                    <AnimatePresence mode="wait">
+                      {viewMode === 'preview' ? (
+                        <motion.div
+                          key="preview"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ height: '100%' }}
+                        >
+                          <ResumePreview 
+                            resume={selectedResume} 
+                            template={template} 
+                            resumeContentRef={resumeContentRef}
+                            apiUrl={API_URL}
+                            onUpdate={fetchResumeDetails}
+                          />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="job-description"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                        >
+                          <JobDescription 
+                            resumeId={selectedResumeId}
+                            onJobDescriptionChange={setCurrentJobDescription}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                </>
+              )}
+            </>
+          ) : currentPage === 'applications-tracker' ? (
+            <motion.div
+              key="applications-tracker"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{ width: '100%', height: '100%' }}
             >
-              <AnimatePresence mode="wait">
-                {viewMode === 'preview' ? (
-                  <motion.div
-                    key="preview"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    style={{ height: '100%' }}
-                  >
-                    <ResumePreview 
-                      resume={selectedResume} 
-                      template={template} 
-                      resumeContentRef={resumeContentRef}
-                      apiUrl={API_URL}
-                      onUpdate={fetchResumeDetails}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="job-description"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-                  >
-                    <JobDescription 
-                      resumeId={selectedResumeId}
-                      onJobDescriptionChange={setCurrentJobDescription}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <ApplicationsTracker />
             </motion.div>
-          </>
-        )}
+          ) : currentPage === 'insights-agent' ? (
+            <motion.div
+              key="insights-agent"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{ width: '100%', height: '100%' }}
+            >
+              <InsightsAgent />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </main>
 
       {isFocusMode && (

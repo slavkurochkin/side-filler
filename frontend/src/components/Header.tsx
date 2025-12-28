@@ -1,10 +1,11 @@
-import { motion } from 'framer-motion'
-import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File, Eye, Briefcase, Focus } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { FileText, Plus, ChevronDown, Trash2, Settings, Palette, Download, FileText as FileTextIcon, File, Eye, Briefcase, Focus, Check } from 'lucide-react'
 import React, { useState, useRef, useEffect } from 'react'
 import { Resume } from '../types'
 import { ResumeTemplate } from './ResumePreview'
 
 type ViewMode = 'preview' | 'job-description'
+type Page = 'resume-builder' | 'applications-tracker' | 'insights-agent'
 
 interface HeaderProps {
   resumes: Resume[]
@@ -21,13 +22,17 @@ interface HeaderProps {
   onViewModeChange: (mode: ViewMode) => void
   isFocusMode: boolean
   onFocusModeChange: (enabled: boolean) => void
+  currentPage: Page
+  onPageChange: (page: Page) => void
 }
 
-export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange, isFocusMode, onFocusModeChange }: HeaderProps) {
+export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange, isFocusMode, onFocusModeChange, currentPage, onPageChange }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const exportDropdownRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return ''
@@ -396,86 +401,142 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
       if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
         setIsExportDropdownOpen(false)
       }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const pageOptions: Array<{ id: Page; label: string; icon: typeof FileText }> = [
+    { id: 'resume-builder', label: 'Resume Builder', icon: FileText },
+    { id: 'applications-tracker', label: 'Applications Tracker', icon: Briefcase },
+    { id: 'insights-agent', label: 'Insights Agent', icon: Eye }
+  ]
+
+  const currentPageOption = pageOptions.find(p => p.id === currentPage)
+  const currentPageIcon = currentPageOption?.icon || FileText
+
   return (
     <header className="app-header">
       <div className="header-left">
-        <div className="logo">
-          <div className="logo-icon">
-            <FileText size={18} />
-          </div>
-          <span className="logo-text">SideFiller</span>
+        <div className="logo-menu" ref={menuRef}>
+          <button 
+            className="logo-menu-button"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            <div className="logo">
+              <div className="logo-icon">
+                {React.createElement(currentPageIcon, { size: 18 })}
+              </div>
+              <span className="logo-text">{currentPageOption?.label || 'SideFiller'}</span>
+            </div>
+            <ChevronDown 
+              size={16} 
+              className={`menu-chevron ${isMenuOpen ? 'open' : ''}`}
+            />
+          </button>
+
+          <AnimatePresence>
+            {isMenuOpen && (
+              <motion.div 
+                className="page-menu-dropdown"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {pageOptions.map(page => {
+                  const Icon = page.icon
+                  return (
+                    <button
+                      key={page.id}
+                      className={`page-menu-item ${currentPage === page.id ? 'active' : ''}`}
+                      onClick={() => {
+                        onPageChange(page.id)
+                        setIsMenuOpen(false)
+                      }}
+                    >
+                      <Icon size={16} />
+                      <span>{page.label}</span>
+                      {currentPage === page.id && <Check size={14} />}
+                    </button>
+                  )
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      <div className="header-center" ref={dropdownRef}>
-        <button 
-          className="resume-selector"
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-        >
-          <span className="selector-text">{(selectedResume?.title && selectedResume.title.trim()) || selectedResume?.name || 'Select Resume'}</span>
-          <ChevronDown 
-            size={16} 
-            className={`selector-chevron ${isDropdownOpen ? 'open' : ''}`}
-          />
-        </button>
-
-        {isDropdownOpen && (
-          <motion.div 
-            className="selector-dropdown"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+      {currentPage === 'resume-builder' && (
+        <div className="header-center" ref={dropdownRef}>
+          <button 
+            className="resume-selector"
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           >
-            {resumes.map(resume => (
-              <div key={resume.id} className="dropdown-row">
-                <button
-                  className={`dropdown-item ${resume.id === selectedResumeId ? 'active' : ''}`}
-                  onClick={() => {
-                    onSelectResume(resume.id)
-                    setIsDropdownOpen(false)
-                  }}
-                >
-                  <FileText size={14} />
-                  <span>{(resume.title && resume.title.trim()) || resume.name}</span>
-                </button>
-                <button
-                  className="delete-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const displayName = (resume.title && resume.title.trim()) || resume.name
-                    if (confirm(`Delete "${displayName}"?`)) {
-                      onDeleteResume(resume.id)
-                    }
-                  }}
-                  title="Delete resume"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            <div className="dropdown-divider" />
-            <button 
-              className="dropdown-item create"
-              onClick={() => {
-                onCreateResume()
-                setIsDropdownOpen(false)
-              }}
-            >
-              <Plus size={14} />
-              <span>Create New Resume</span>
-            </button>
-          </motion.div>
-        )}
-      </div>
+            <span className="selector-text">{(selectedResume?.title && selectedResume.title.trim()) || selectedResume?.name || 'Select Resume'}</span>
+            <ChevronDown 
+              size={16} 
+              className={`selector-chevron ${isDropdownOpen ? 'open' : ''}`}
+            />
+          </button>
 
-      <div className="header-right">
-        {selectedResume && (
-          <div className="export-dropdown-container" ref={exportDropdownRef}>
+          {isDropdownOpen && (
+            <motion.div 
+              className="selector-dropdown"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              {resumes.map(resume => (
+                <div key={resume.id} className="dropdown-row">
+                  <button
+                    className={`dropdown-item ${resume.id === selectedResumeId ? 'active' : ''}`}
+                    onClick={() => {
+                      onSelectResume(resume.id)
+                      setIsDropdownOpen(false)
+                    }}
+                  >
+                    <FileText size={14} />
+                    <span>{(resume.title && resume.title.trim()) || resume.name}</span>
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const displayName = (resume.title && resume.title.trim()) || resume.name
+                      if (confirm(`Delete "${displayName}"?`)) {
+                        onDeleteResume(resume.id)
+                      }
+                    }}
+                    title="Delete resume"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <div className="dropdown-divider" />
+              <button 
+                className="dropdown-item create"
+                onClick={() => {
+                  onCreateResume()
+                  setIsDropdownOpen(false)
+                }}
+              >
+                <Plus size={14} />
+                <span>Create New Resume</span>
+              </button>
+            </motion.div>
+          )}
+        </div>
+      )}
+
+      {currentPage === 'resume-builder' && (
+        <div className="header-right">
+          {selectedResume && (
+            <div className="export-dropdown-container" ref={exportDropdownRef}>
             <button 
               className="export-dropdown-btn"
               onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
@@ -530,9 +591,9 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
                 </button>
               </motion.div>
             )}
-          </div>
-        )}
-        <div className="view-mode-toggle">
+            </div>
+          )}
+          <div className="view-mode-toggle">
           <button
             className={`view-mode-btn ${viewMode === 'preview' ? 'active' : ''}`}
             onClick={() => onViewModeChange('preview')}
@@ -550,44 +611,45 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
             <span>Job Description</span>
           </button>
         </div>
-        {viewMode === 'preview' && (
-          <div className="template-selector-header">
-            <Palette size={16} />
-            <select 
-              value={template} 
-              onChange={(e) => onTemplateChange(e.target.value as ResumeTemplate)}
-              className="template-select-header"
-            >
-              <option value="classic">Classic</option>
-              <option value="modern">Modern</option>
-              <option value="minimal">Minimal</option>
-            </select>
-          </div>
-        )}
-        <button 
-          className={`focus-mode-btn ${isFocusMode ? 'active' : ''}`}
-          onClick={() => onFocusModeChange(!isFocusMode)}
-          title="Focus Mode - Hide UI for side-by-side editing"
-        >
-          <Focus size={18} />
-        </button>
-        <button 
-          className="settings-btn"
-          onClick={onOpenSettings}
-          title="Settings"
-        >
-          <Settings size={18} />
-        </button>
-        <motion.button 
-          className="new-resume-btn"
-          onClick={onCreateResume}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Plus size={16} />
-          <span>New Resume</span>
-        </motion.button>
-      </div>
+          {viewMode === 'preview' && (
+            <div className="template-selector-header">
+              <Palette size={16} />
+              <select 
+                value={template} 
+                onChange={(e) => onTemplateChange(e.target.value as ResumeTemplate)}
+                className="template-select-header"
+              >
+                <option value="classic">Classic</option>
+                <option value="modern">Modern</option>
+                <option value="minimal">Minimal</option>
+              </select>
+            </div>
+          )}
+          <button 
+            className={`focus-mode-btn ${isFocusMode ? 'active' : ''}`}
+            onClick={() => onFocusModeChange(!isFocusMode)}
+            title="Focus Mode - Hide UI for side-by-side editing"
+          >
+            <Focus size={18} />
+          </button>
+          <button 
+            className="settings-btn"
+            onClick={onOpenSettings}
+            title="Settings"
+          >
+            <Settings size={18} />
+          </button>
+          <motion.button 
+            className="new-resume-btn"
+            onClick={onCreateResume}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <Plus size={16} />
+            <span>New Resume</span>
+          </motion.button>
+        </div>
+      )}
 
       <style>{`
         .app-header {
@@ -846,6 +908,93 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           position: relative;
           display: flex;
           align-items: center;
+        }
+
+        .logo-menu {
+          position: relative;
+        }
+
+        .logo-menu-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 8px;
+          transition: background 150ms ease;
+        }
+
+        .logo-menu-button:hover {
+          background: var(--bg-tertiary);
+        }
+
+        .menu-chevron {
+          color: var(--text-muted);
+          transition: transform 150ms ease;
+        }
+
+        .menu-chevron.open {
+          transform: rotate(180deg);
+        }
+
+        .page-menu-dropdown {
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 0;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: 12px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+          min-width: 220px;
+          overflow: hidden;
+          z-index: 1000;
+          padding: 4px;
+        }
+
+        .page-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          padding: 10px 14px;
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: all 150ms ease;
+          text-align: left;
+        }
+
+        .page-menu-item:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .page-menu-item.active {
+          background: var(--accent-glow);
+          color: var(--accent-primary);
+        }
+
+        .page-menu-item.active:hover {
+          background: var(--accent-primary);
+          color: white;
+        }
+
+        .page-menu-item svg:first-child {
+          flex-shrink: 0;
+        }
+
+        .page-menu-item span {
+          flex: 1;
+        }
+
+        .page-menu-item svg:last-child {
+          flex-shrink: 0;
+          margin-left: auto;
         }
 
         .logo {
