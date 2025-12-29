@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, User, Mail, Phone, Globe, Linkedin, Github, Save, Palette, Key } from 'lucide-react'
+import { X, User, Mail, Phone, Globe, Linkedin, Github, Save, Palette, Key, Info } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -99,6 +99,7 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
   const [openaiModel, setOpenaiModel] = useState<string>('gpt-4o-mini')
   const [isLoadingKey, setIsLoadingKey] = useState(false)
   const [isKeyFocused, setIsKeyFocused] = useState(false)
+  const [showApiKeyInfo, setShowApiKeyInfo] = useState(false)
   
   const OPENAI_MODELS = [
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast & Cost-effective)' },
@@ -346,6 +347,33 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
                   <label>
                     <Key size={16} />
                     OpenAI API Key
+                    <button
+                      className="info-icon-btn"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setShowApiKeyInfo(!showApiKeyInfo)
+                      }}
+                      onMouseEnter={() => setShowApiKeyInfo(true)}
+                      onMouseLeave={() => setShowApiKeyInfo(false)}
+                      title="How to get your OpenAI API key"
+                    >
+                      <Info size={14} />
+                    </button>
+                    {showApiKeyInfo && (
+                      <div className="api-key-info-tooltip">
+                        <h4>How to get your OpenAI API Key:</h4>
+                        <ol>
+                          <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a></li>
+                          <li>Sign in or create an OpenAI account</li>
+                          <li>Click "Create new secret key"</li>
+                          <li>Copy the key (it starts with "sk-")</li>
+                          <li>Paste it in the field below</li>
+                        </ol>
+                        <p className="info-note">
+                          <strong>Note:</strong> Your API key is stored securely in the database and used for AI-powered features like resume optimization and interview preparation.
+                        </p>
+                      </div>
+                    )}
                   </label>
                   <input
                     type="text"
@@ -574,6 +602,82 @@ export function Settings({ isOpen, onClose, onSave }: SettingsProps) {
               font-weight: 500;
               color: var(--text-secondary);
               margin-bottom: 6px;
+              position: relative;
+            }
+
+            .info-icon-btn {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              padding: 2px;
+              margin-left: 4px;
+              background: transparent;
+              border: none;
+              color: var(--text-muted);
+              cursor: pointer;
+              border-radius: 4px;
+              transition: all 150ms ease;
+            }
+
+            .info-icon-btn:hover {
+              color: var(--accent-primary);
+              background: var(--accent-glow);
+            }
+
+            .api-key-info-tooltip {
+              position: absolute;
+              top: 100%;
+              left: 0;
+              margin-top: 8px;
+              padding: 16px;
+              background: var(--bg-elevated);
+              border: 1px solid var(--border-default);
+              border-radius: 8px;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+              z-index: 1000;
+              min-width: 320px;
+              max-width: 400px;
+              font-size: 0.8rem;
+              line-height: 1.6;
+            }
+
+            .api-key-info-tooltip h4 {
+              margin: 0 0 12px 0;
+              font-size: 0.85rem;
+              font-weight: 600;
+              color: var(--text-primary);
+            }
+
+            .api-key-info-tooltip ol {
+              margin: 0 0 12px 0;
+              padding-left: 20px;
+              color: var(--text-secondary);
+            }
+
+            .api-key-info-tooltip li {
+              margin-bottom: 8px;
+            }
+
+            .api-key-info-tooltip a {
+              color: var(--accent-primary);
+              text-decoration: none;
+            }
+
+            .api-key-info-tooltip a:hover {
+              text-decoration: underline;
+            }
+
+            .api-key-info-tooltip .info-note {
+              margin: 12px 0 0 0;
+              padding: 8px;
+              background: var(--bg-tertiary);
+              border-radius: 6px;
+              font-size: 0.75rem;
+              color: var(--text-secondary);
+            }
+
+            .api-key-info-tooltip .info-note strong {
+              color: var(--text-primary);
             }
 
             .form-group input,
