@@ -2964,14 +2964,18 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         .action-btn {
           padding: 4px;
           border-radius: var(--radius-sm);
-          border: none;
-          background: transparent;
+          border: 1px solid var(--border-default);
+          background: var(--bg-tertiary);
           color: var(--text-muted);
           cursor: pointer;
           transition: all var(--transition-fast);
           display: flex;
           align-items: center;
           justify-content: center;
+          min-width: 22px;
+          min-height: 22px;
+          opacity: 1;
+          visibility: visible;
         }
 
         .action-btn:hover {
@@ -2979,8 +2983,27 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           color: var(--text-primary);
         }
 
+        .edit-btn {
+          opacity: 1;
+          visibility: visible;
+          color: var(--text-secondary);
+        }
+
+        .edit-btn:hover {
+          background: rgba(59, 130, 246, 0.15);
+          border-color: rgb(59, 130, 246);
+          color: rgb(59, 130, 246);
+        }
+
+        .delete-btn {
+          opacity: 1;
+          visibility: visible;
+          color: var(--text-secondary);
+        }
+
         .delete-btn:hover {
-          background: rgba(239, 68, 68, 0.1);
+          background: rgba(239, 68, 68, 0.15);
+          border-color: var(--accent-danger);
           color: var(--accent-danger);
         }
 

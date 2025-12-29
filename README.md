@@ -2,6 +2,10 @@
 
 A modern, AI-powered web application for managing your resume alongside job postings and applications. Features intelligent resume optimization, job description analysis, and interview preparation powered by vector embeddings and large language models.
 
+⭐ **If you find this project useful, please consider giving it a star on GitHub!** ⭐
+
+Contributions, forks, and feedback are always welcome! 🚀
+
 ![SideFiller](https://img.shields.io/badge/React-18-blue) ![Express](https://img.shields.io/badge/Express-4-green) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue) ![Docker](https://img.shields.io/badge/Docker-Ready-blue) ![AI](https://img.shields.io/badge/AI-Powered-purple)
 
 ## Features
@@ -562,6 +566,126 @@ Migrations run automatically on startup. Manual migrations are in `database/` di
 - **Input Validation**: All endpoints validate input
 - **SQL Injection**: Protected via parameterized queries
 
+## Contributing
+
+We welcome contributions to SideFiller! Whether you're fixing bugs, adding features, improving documentation, or suggesting enhancements, your help is appreciated.
+
+### How to Contribute
+
+1. **Fork the repository** and clone it to your local machine
+2. **Create a new branch** for your changes:
+   ```bash
+   git checkout -b feature/your-feature-name
+   # or
+   git checkout -b fix/your-bug-fix
+   ```
+3. **Make your changes** following the coding standards below
+4. **Test your changes** to ensure everything works correctly
+5. **Commit your changes** with clear, descriptive commit messages
+6. **Push to your fork** and open a Pull Request
+
+### Reporting Bugs
+
+If you find a bug, please open an issue with:
+- **Clear description** of the bug
+- **Steps to reproduce** the issue
+- **Expected behavior** vs **actual behavior**
+- **Environment details** (OS, Node version, Docker version, etc.)
+- **Screenshots or error messages** if applicable
+
+### Suggesting Features
+
+We'd love to hear your ideas! When suggesting a feature:
+- **Describe the feature** and why it would be useful
+- **Provide use cases** or examples
+- **Consider implementation** - is it feasible? What would it involve?
+- **Check existing issues** to avoid duplicates
+
+### Pull Request Guidelines
+
+- **Keep PRs focused** - one feature or bug fix per PR
+- **Write clear commit messages** - explain what and why
+- **Update documentation** if you're adding features or changing behavior
+- **Test your changes** before submitting
+- **Ensure code follows** the project's style guidelines
+- **Reference related issues** in your PR description
+
+### Code Style
+
+- **TypeScript**: Use TypeScript for all new code
+- **Formatting**: Follow existing code style and indentation
+- **Naming**: Use descriptive variable and function names
+- **Comments**: Add comments for complex logic
+- **Error Handling**: Include proper error handling and validation
+- **Type Safety**: Avoid `any` types - use proper TypeScript types
+
+### Development Setup
+
+Before contributing, make sure you can run the project locally:
+
+1. **Set up the development environment**:
+   ```bash
+   # Clone your fork
+   git clone https://github.com/your-username/side-filler.git
+   cd side-filler
+   
+   # Start services with Docker
+   docker-compose up --build
+   ```
+
+2. **For local development** (without Docker):
+   - Set up PostgreSQL and Qdrant locally
+   - Install dependencies: `npm install` in both `backend/` and `frontend/`
+   - Run migrations manually if needed
+   - Start backend: `cd backend && npm run dev`
+   - Start frontend: `cd frontend && npm run dev`
+
+### Testing
+
+- **Test manually** before submitting PRs
+- **Test edge cases** and error scenarios
+- **Verify AI features** work with valid API keys
+- **Check database migrations** if you're modifying schema
+- **Test vector sync** if you're modifying job description features
+
+### Areas for Contribution
+
+We especially welcome contributions in:
+- 🐛 **Bug fixes** and error handling improvements
+- ✨ **New features** that align with the project's goals
+- 📚 **Documentation** improvements and examples
+- 🎨 **UI/UX** enhancements
+- ⚡ **Performance** optimizations
+- 🔒 **Security** improvements
+- 🧪 **Testing** infrastructure and test coverage
+
+### Questions?
+
+If you have questions about contributing, feel free to:
+- Open an issue with the `question` label
+- Check existing issues and discussions
+- Review the codebase to understand the architecture
+
+Thank you for contributing to SideFiller! 🎉
+
 ## License
 
-MIT
+This project is **free for personal use** and is provided as-is for individual developers and job seekers.
+
+**Commercial Use**: This software is **NOT licensed for commercial use**. If you wish to use this software for commercial purposes, please contact the repository owner for licensing arrangements.
+
+**Personal Use**: You are free to:
+- Use this software for your personal job search and resume management
+- Fork and modify the code for your personal use
+- Contribute improvements back to the project
+
+**Restrictions**:
+- ❌ Commercial use without explicit permission
+- ❌ Redistribution in commercial products
+- ❌ Use in paid services or products
+
+---
+
+⭐ **Star this repository** if you find it helpful!  
+🍴 **Fork it** to customize for your needs!  
+🐛 **Report issues** or submit pull requests to help improve SideFiller!
