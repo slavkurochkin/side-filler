@@ -154,6 +154,7 @@ async function ensureJobDescriptionsTable() {
           content TEXT NOT NULL,
           title VARCHAR(500),
           job_posting_url TEXT,
+          label VARCHAR(255),
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
@@ -238,6 +239,26 @@ async function ensureJobDescriptionsTable() {
         console.log('✅ Verified job_posting_url column exists');
       } catch (error) {
         console.error('⚠️ Error checking job_posting_url column:', error);
+      }
+      
+      // Ensure label column exists (for existing tables)
+      try {
+        await pool.query(`
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'job_descriptions' 
+              AND column_name = 'label'
+            ) THEN
+              ALTER TABLE job_descriptions ADD COLUMN label VARCHAR(255);
+              RAISE NOTICE 'Added label column';
+            END IF;
+          END $$;
+        `);
+        console.log('✅ Verified label column exists');
+      } catch (error) {
+        console.error('⚠️ Error checking label column:', error);
       }
     }
   } catch (error) {

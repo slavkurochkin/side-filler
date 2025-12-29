@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS job_descriptions (
     content TEXT NOT NULL,
     title VARCHAR(500),
     job_posting_url TEXT,
+    label VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

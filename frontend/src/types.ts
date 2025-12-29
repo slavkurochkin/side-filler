@@ -109,3 +109,13 @@ export interface ApplicationStats {
   interviews_scheduled: number
 }
 
+export interface JobDescriptionData {
+  id: string
+  content: string
+  title: string | null
+  job_posting_url: string | null
+  label: string | null
+  created_at: string
+  updated_at: string
+}
+

@@ -1,16 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Copy, Check, Save, ChevronDown, Trash2, Plus, ExternalLink, Edit3 } from 'lucide-react'
+import { FileText, Copy, Check, Save, ChevronDown, Trash2, Plus, ExternalLink, Edit3, Tag } from 'lucide-react'
+import { JobDescriptionData } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
-
-interface JobDescriptionData {
-  id: string
-  content: string
-  title: string | null
-  job_posting_url: string | null
-  created_at: string
-  updated_at: string
-}
 
 interface JobDescriptionProps {
   resumeId?: string | null
@@ -20,12 +12,14 @@ interface JobDescriptionProps {
 export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: JobDescriptionProps) {
   const [jobDescription, setJobDescription] = useState('')
   const [jobPostingUrl, setJobPostingUrl] = useState('')
+  const [label, setLabel] = useState('')
   const [copied, setCopied] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [savedDescriptions, setSavedDescriptions] = useState<JobDescriptionData[]>([])
   const [selectedDescriptionId, setSelectedDescriptionId] = useState<string | null>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [saveTitle, setSaveTitle] = useState('')
+  const [saveLabel, setSaveLabel] = useState('')
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [editTitleValue, setEditTitleValue] = useState('')
@@ -106,6 +100,7 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
         const content = data.content || ''
         setJobDescription(content)
         setJobPostingUrl(data.job_posting_url || '')
+        setLabel(data.label || '')
         setSelectedDescriptionId(data.id)
         setIsDropdownOpen(false)
         setEditingTitle(false)
@@ -149,7 +144,8 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
         body: JSON.stringify({
           title: newTitle || null,
           content: jobDescription,
-          job_posting_url: jobPostingUrl
+          job_posting_url: jobPostingUrl,
+          label: label.trim() || null
         })
       })
 
@@ -180,31 +176,48 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
   }, [jobDescription, onJobDescriptionChange])
 
   const handleSave = async () => {
-    if (!jobDescription.trim()) return
+    console.log('handleSave called', { 
+      hasContent: !!jobDescription.trim(), 
+      selectedDescriptionId,
+      label 
+    })
+    
+    if (!jobDescription.trim()) {
+      console.log('handleSave: No content, returning early')
+      return
+    }
 
     // If a job description is selected, update it directly
     if (selectedDescriptionId) {
+      console.log('handleSave: Calling handleUpdate')
       await handleUpdate()
       return
     }
 
     // Otherwise, show save dialog to create new one
+    console.log('handleSave: Showing save dialog')
     setShowSaveDialog(true)
   }
 
   const handleUpdate = async () => {
-    if (!selectedDescriptionId || !jobDescription.trim()) return
+    if (!selectedDescriptionId || !jobDescription.trim()) {
+      console.log('handleUpdate: Early return', { selectedDescriptionId, hasContent: !!jobDescription.trim() })
+      return
+    }
 
     try {
       setSaveStatus('saving')
+      const payload = {
+        content: jobDescription,
+        title: selectedDescription?.title || null,
+        job_posting_url: jobPostingUrl.trim() || null,
+        label: label.trim() || null
+      }
+      console.log('handleUpdate: Sending request', { selectedDescriptionId, payload })
       const response = await fetch(`${API_URL}/job-descriptions/${selectedDescriptionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: jobDescription,
-          title: selectedDescription?.title || null,
-          job_posting_url: jobPostingUrl.trim() || null
-        })
+        body: JSON.stringify(payload)
       })
 
       if (response.ok) {
@@ -240,7 +253,8 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
         body: JSON.stringify({
           content: jobDescription,
           title: saveTitle.trim() || null,
-          job_posting_url: jobPostingUrl.trim() || null
+          job_posting_url: jobPostingUrl.trim() || null,
+          label: saveLabel.trim() || null
         })
       })
 
@@ -248,6 +262,8 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
         const data = await response.json()
         setSaveStatus('saved')
         setSaveTitle('')
+        setSaveLabel('')
+        setLabel(data.label || '')
         setShowSaveDialog(false)
         setTimeout(() => setSaveStatus('idle'), 2000)
         // Refresh the list
@@ -274,6 +290,7 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
     setSelectedDescriptionId(null)
     setJobDescription('')
     setJobPostingUrl('')
+    setLabel('')
     setEditingTitle(false)
     setIsDropdownOpen(false)
     if (onJobDescriptionChange) {
@@ -298,6 +315,7 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
           setSelectedDescriptionId(null)
           setJobDescription('')
           setJobPostingUrl('')
+          setLabel('')
         }
       }
     } catch (error) {
@@ -387,16 +405,25 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
                     {selectedDescription ? getDescriptionTitle(selectedDescription) : 'Select...'}
                   </span>
                   {selectedDescription && (
-                    <button
+                    <span
                       className="edit-title-btn"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleTitleEdit()
                       }}
                       title="Edit title"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleTitleEdit()
+                        }
+                      }}
                     >
                       <Edit3 size={12} />
-                    </button>
+                    </span>
                   )}
                 </>
               )}
@@ -413,7 +440,12 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
                       className={`dropdown-item ${selectedDescriptionId === desc.id ? 'active' : ''}`}
                       onClick={() => loadDescription(desc)}
                     >
-                      <span className="item-title">{getDescriptionTitle(desc)}</span>
+                      <div className="item-header">
+                        <span className="item-title">{desc.title || `Job Description ${new Date(desc.created_at).toLocaleDateString()}`}</span>
+                        {desc.label && (
+                          <span className="item-label">{desc.label}</span>
+                        )}
+                      </div>
                       <span className="item-date">{new Date(desc.updated_at).toLocaleDateString()}</span>
                       <button
                         className="delete-item-btn"
@@ -438,9 +470,15 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
           </button>
           <button
             className="save-btn"
-            onClick={handleSave}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              console.log('Save button clicked', { selectedDescriptionId, label, jobDescription: jobDescription.substring(0, 50) })
+              handleSave()
+            }}
             disabled={!jobDescription.trim() || saveStatus === 'saving'}
             title={selectedDescriptionId ? "Update job description" : "Save job description"}
+            type="button"
           >
             <Save size={16} />
             <span>{selectedDescriptionId ? 'Update' : 'Save'}</span>
@@ -467,19 +505,38 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
               value={saveTitle}
               onChange={(e) => setSaveTitle(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.target === e.currentTarget) {
+                  e.preventDefault()
+                  document.getElementById('save-label-input')?.focus()
+                } else if (e.key === 'Escape') {
+                  setShowSaveDialog(false)
+                  setSaveTitle('')
+                  setSaveLabel('')
+                }
+              }}
+              autoFocus
+            />
+            <input
+              id="save-label-input"
+              type="text"
+              placeholder="Enter a label/tag (e.g., SDET, AI Engineering) (optional)"
+              value={saveLabel}
+              onChange={(e) => setSaveLabel(e.target.value)}
+              onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   confirmSave()
                 } else if (e.key === 'Escape') {
                   setShowSaveDialog(false)
                   setSaveTitle('')
+                  setSaveLabel('')
                 }
               }}
-              autoFocus
             />
             <div className="dialog-actions">
               <button className="btn-cancel" onClick={() => {
                 setShowSaveDialog(false)
                 setSaveTitle('')
+                setSaveLabel('')
               }}>
                 Cancel
               </button>
@@ -516,6 +573,29 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
               <ExternalLink size={14} />
             </a>
           )}
+        </div>
+        <div className="url-input-container">
+          <label htmlFor="job-label" className="url-label">
+            <Tag size={16} />
+            <span>Label</span>
+          </label>
+          <input
+            id="job-label"
+            type="text"
+            className="url-input"
+            placeholder="e.g., SDET, AI Engineering"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                // Optionally trigger save on Enter
+                if (selectedDescriptionId && jobDescription.trim()) {
+                  handleSave()
+                }
+              }
+            }}
+          />
         </div>
         <textarea
           ref={textareaRef}
@@ -680,13 +760,15 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
           cursor: pointer;
           opacity: 0;
           transition: all var(--transition-fast);
+          outline: none;
         }
 
         .selector-btn:hover .edit-title-btn {
           opacity: 1;
         }
 
-        .edit-title-btn:hover {
+        .edit-title-btn:hover,
+        .edit-title-btn:focus {
           background: var(--bg-hover);
           color: var(--text-primary);
         }
@@ -751,10 +833,26 @@ export function JobDescription({ resumeId: _resumeId, onJobDescriptionChange }: 
           background: var(--accent-glow);
         }
 
+        .item-header {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          flex-wrap: wrap;
+        }
+
         .item-title {
           font-size: 0.875rem;
           font-weight: 500;
           color: var(--text-primary);
+        }
+
+        .item-label {
+          font-size: 0.75rem;
+          padding: 2px 8px;
+          background: var(--accent-glow);
+          color: var(--accent-primary);
+          border-radius: var(--radius-sm);
+          font-weight: 500;
         }
 
         .item-date {

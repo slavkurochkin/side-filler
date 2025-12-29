@@ -162,11 +162,12 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     job_description_id: '',
     resume_id: ''
   })
-  const [jobDescriptions, setJobDescriptions] = useState<Array<{ id: string; title: string | null }>>([])
+  const [jobDescriptions, setJobDescriptions] = useState<Array<{ id: string; title: string | null; label: string | null }>>([])
   const [resumes, setResumes] = useState<Array<{ id: string; name: string }>>([])
   const [isCreatingNewJobDescription, setIsCreatingNewJobDescription] = useState(false)
   const [newJobDescriptionContent, setNewJobDescriptionContent] = useState('')
   const [newJobDescriptionTitle, setNewJobDescriptionTitle] = useState('')
+  const [newJobDescriptionLabel, setNewJobDescriptionLabel] = useState('')
   const [isSavingJobDescription, setIsSavingJobDescription] = useState(false)
   const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false)
   const cycleDropdownRef = useRef<HTMLDivElement>(null)
@@ -263,7 +264,11 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
       const response = await fetch(`${API_URL}/job-descriptions`)
       if (response.ok) {
         const data = await response.json()
-        setJobDescriptions(data.map((jd: any) => ({ id: jd.id, title: jd.title || `Job Description ${new Date(jd.created_at).toLocaleDateString()}` })))
+        setJobDescriptions(data.map((jd: any) => ({ 
+          id: jd.id, 
+          title: jd.title || `Job Description ${new Date(jd.created_at).toLocaleDateString()}`,
+          label: jd.label || null
+        })))
       }
     } catch (error) {
       console.error('Failed to fetch job descriptions:', error)
@@ -297,7 +302,8 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         body: JSON.stringify({
           content: newJobDescriptionContent,
           title: newJobDescriptionTitle.trim() || null,
-          job_posting_url: url.trim() || null
+          job_posting_url: url.trim() || null,
+          label: newJobDescriptionLabel.trim() || null
         })
       })
 
@@ -311,6 +317,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         setIsCreatingNewJobDescription(false)
         setNewJobDescriptionContent('')
         setNewJobDescriptionTitle('')
+        setNewJobDescriptionLabel('')
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Failed to save job description' }))
         alert(`Failed to save job description: ${errorData.error || 'Unknown error'}`)
@@ -327,6 +334,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     setIsCreatingNewJobDescription(false)
     setNewJobDescriptionContent('')
     setNewJobDescriptionTitle('')
+    setNewJobDescriptionLabel('')
   }
 
   const fetchApplications = async () => {
@@ -517,6 +525,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         setIsCreatingNewJobDescription(false)
         setNewJobDescriptionContent('')
         setNewJobDescriptionTitle('')
+        setNewJobDescriptionLabel('')
       }
     } catch (error) {
       console.error('Failed to save application:', error)
@@ -543,6 +552,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     setIsCreatingNewJobDescription(false)
     setNewJobDescriptionContent('')
     setNewJobDescriptionTitle('')
+    setNewJobDescriptionLabel('')
     setShowApplicationModal(true)
   }
 
@@ -1859,6 +1869,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
               setIsCreatingNewJobDescription(false)
               setNewJobDescriptionContent('')
               setNewJobDescriptionTitle('')
+              setNewJobDescriptionLabel('')
             }}
           >
             <motion.div
@@ -1878,6 +1889,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                     setIsCreatingNewJobDescription(false)
                     setNewJobDescriptionContent('')
                     setNewJobDescriptionTitle('')
+                    setNewJobDescriptionLabel('')
                   }}
                 >
                   <X size={20} />
@@ -2009,7 +2021,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                     >
                       <option value="">None</option>
                       {jobDescriptions.map(jd => (
-                        <option key={jd.id} value={jd.id}>{jd.title}</option>
+                        <option key={jd.id} value={jd.id}>
+                          {jd.title}{jd.label ? ` [${jd.label}]` : ''}
+                        </option>
                       ))}
                       <option value="__new__">+ Create New</option>
                     </select>
@@ -2025,6 +2039,26 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                           value={newJobDescriptionTitle}
                           onChange={(e) => setNewJobDescriptionTitle(e.target.value)}
                           placeholder="Enter a title for this job description"
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.875rem'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                          Label (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={newJobDescriptionLabel}
+                          onChange={(e) => setNewJobDescriptionLabel(e.target.value)}
+                          placeholder="e.g., SDET, AI Engineering"
                           style={{
                             width: '100%',
                             padding: '8px 12px',
@@ -2153,6 +2187,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                     setIsCreatingNewJobDescription(false)
                     setNewJobDescriptionContent('')
                     setNewJobDescriptionTitle('')
+                    setNewJobDescriptionLabel('')
                   }}
                 >
                   Cancel

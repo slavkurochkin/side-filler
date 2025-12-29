@@ -41,9 +41,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Create a new job description (available for all resumes)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { content, title, job_posting_url } = req.body;
+    const { content, title, job_posting_url, label } = req.body;
     
-    console.log('POST /job-descriptions - Request body:', { contentLength: content?.length, title, job_posting_url });
+    console.log('POST /job-descriptions - Request body:', { contentLength: content?.length, title, job_posting_url, label });
     
     if (!content) {
       console.error('Missing required fields:', { content: !!content });
@@ -52,10 +52,10 @@ router.post('/', async (req: Request, res: Response) => {
     
     // Create a new job description (no resume_id needed)
     const result = await pool.query(
-      `INSERT INTO job_descriptions (content, title, job_posting_url)
-       VALUES ($1, $2, $3)
+      `INSERT INTO job_descriptions (content, title, job_posting_url, label)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [content, title || null, job_posting_url || null]
+      [content, title || null, job_posting_url || null, label || null]
     );
     
     console.log('Successfully saved job description:', result.rows[0].id);
@@ -78,16 +78,43 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { content, title, job_posting_url } = req.body;
+    const { content, title, job_posting_url, label } = req.body;
+    
+    // Build dynamic update query based on what fields are provided
+    const updates: string[] = [];
+    const values: any[] = [id];
+    let paramIndex = 2;
+    
+    if (content !== undefined) {
+      updates.push(`content = $${paramIndex++}`);
+      values.push(content);
+    }
+    
+    if (title !== undefined) {
+      updates.push(`title = $${paramIndex++}`);
+      values.push(title);
+    }
+    
+    if (job_posting_url !== undefined) {
+      updates.push(`job_posting_url = $${paramIndex++}`);
+      values.push(job_posting_url);
+    }
+    
+    if (label !== undefined) {
+      updates.push(`label = $${paramIndex++}`);
+      values.push(label);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
     
     const result = await pool.query(
       `UPDATE job_descriptions 
-       SET content = COALESCE($2, content),
-           title = COALESCE($3, title),
-           job_posting_url = COALESCE($4, job_posting_url)
+       SET ${updates.join(', ')}
        WHERE id = $1
        RETURNING *`,
-      [id, content, title, job_posting_url]
+      values
     );
     
     if (result.rows.length === 0) {
