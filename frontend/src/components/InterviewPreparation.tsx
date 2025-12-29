@@ -96,10 +96,42 @@ export function InterviewPreparation({ application, onClose }: InterviewPreparat
     }
   }
 
+  // Helper function to render text with bold formatting
+  const renderBoldText = (text: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    const boldRegex = /\*\*(.+?)\*\*/g
+    let match
+
+    while ((match = boldRegex.exec(text)) !== null) {
+      // Add text before the bold section
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index))
+      }
+      // Add the bold text
+      parts.push(
+        <strong key={match.index} style={{ fontWeight: 600, color: '#f8fafc' }}>
+          {match[1]}
+        </strong>
+      )
+      lastIndex = match.index + match[0].length
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex))
+    }
+
+    return parts.length > 0 ? parts : [text]
+  }
+
   // Format the suggestion text with proper line breaks
   const formatSuggestionText = (text: string) => {
+    // Convert all bullet points (*, •) to dashes
+    let normalizedText = text.replace(/^(\s*)[\*•](\s+)/gm, '$1-$2')
+    
     // Split by double newlines for paragraphs
-    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim())
+    const paragraphs = normalizedText.split(/\n\s*\n/).filter(p => p.trim())
     return paragraphs.map((paragraph, index) => {
       // Check if paragraph starts with a markdown-style header
       const headerMatch = paragraph.match(/^(#{1,6})\s+(.+)$/m)
@@ -115,19 +147,24 @@ export function InterviewPreparation({ application, onClose }: InterviewPreparat
             fontSize: level === 1 ? '1.25rem' : level === 2 ? '1.1rem' : '1rem',
             color: '#f8fafc'
           }}>
-            {content}
+            {renderBoldText(content)}
           </HeaderTag>
         )
       }
       
-      // Check if paragraph is a list item
-      if (paragraph.match(/^[\d\-\*•]\s+/m)) {
+      // Check if paragraph is a list item (only dashes now, or numbered)
+      if (paragraph.match(/^[\d\-]\s+/m)) {
         const lines = paragraph.split('\n').filter(l => l.trim())
         return (
-          <ul key={index} style={{ marginTop: index > 0 ? '1rem' : '0', paddingLeft: '1.5rem', color: '#f8fafc' }}>
+          <ul key={index} style={{ marginTop: index > 0 ? '1rem' : '0', paddingLeft: '1.5rem', color: '#f8fafc', listStyle: 'none' }}>
             {lines.map((line, lineIndex) => {
-              const cleanLine = line.replace(/^[\d\-\*•]\s+/, '').trim()
-              return <li key={lineIndex} style={{ marginBottom: '0.5rem', color: '#f8fafc' }}>{cleanLine}</li>
+              // Remove list markers (numbers or dashes) - all will be rendered as dashes
+              const cleanLine = line.replace(/^[\d\-]\s+/, '').trim()
+              return (
+                <li key={lineIndex} style={{ marginBottom: '0.5rem', color: '#f8fafc' }}>
+                  {renderBoldText(cleanLine)}
+                </li>
+              )
             })}
           </ul>
         )
@@ -143,7 +180,7 @@ export function InterviewPreparation({ application, onClose }: InterviewPreparat
         }}>
           {paragraph.split('\n').map((line, lineIndex, array) => (
             <React.Fragment key={lineIndex}>
-              {line}
+              {renderBoldText(line)}
               {lineIndex < array.length - 1 && <br />}
             </React.Fragment>
           ))}
@@ -539,6 +576,10 @@ export function InterviewPreparation({ application, onClose }: InterviewPreparat
         .interview-prep-suggestion-content-dark p,
         .interview-prep-suggestion-content-dark span,
         .interview-prep-suggestion-content-dark div,
+        .interview-prep-suggestion-content-dark ul {
+          list-style: none !important;
+        }
+
         .interview-prep-suggestion-content-dark ul,
         .interview-prep-suggestion-content-dark ol,
         .interview-prep-suggestion-content-dark li,
@@ -598,6 +639,7 @@ export function InterviewPreparation({ application, onClose }: InterviewPreparat
         .suggestion-text ul {
           margin: 0.75rem 0;
           padding-left: 1.5rem;
+          list-style: none;
         }
 
         .suggestion-text li {
