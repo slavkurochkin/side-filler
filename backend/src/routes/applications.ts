@@ -306,10 +306,10 @@ router.post('/', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO applications (
         cycle_id, job_description_id, company_name, job_title, status,
-        applied_date, interview_date, reply_received, reply_date, notes,
+        applied_date, interview_date, interview_type, reply_received, reply_date, notes,
         job_posting_url, salary_range, location
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         cycle_id,
@@ -319,6 +319,7 @@ router.post('/', async (req: Request, res: Response) => {
         status || 'applied',
         applied_date || null,
         interview_date || null,
+        interview_type || null,
         reply_received ?? null, // Preserve null for waiting state
         reply_date || null,
         notes || null,
@@ -347,6 +348,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       status,
       applied_date,
       interview_date,
+      interview_type,
       reply_received,
       reply_date,
       notes,
@@ -393,6 +395,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (interview_date !== undefined) {
       updates.push(`interview_date = $${paramIndex}`);
       values.push(interview_date);
+      paramIndex++;
+    }
+    if (interview_type !== undefined) {
+      updates.push(`interview_type = $${paramIndex}`);
+      values.push(interview_type);
       paramIndex++;
     }
     if (reply_received !== undefined) {
@@ -442,9 +449,14 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
     
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating application:', error);
-    res.status(500).json({ error: 'Failed to update application' });
+    const errorMessage = error.message || 'Failed to update application';
+    console.error('Error details:', errorMessage);
+    res.status(500).json({ 
+      error: 'Failed to update application',
+      details: errorMessage 
+    });
   }
 });
 

@@ -13,6 +13,19 @@ import { JobSearchCycle, Application, ApplicationStats } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
+const INTERVIEW_TYPES = [
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'hiring_manager', label: 'Hiring Manager' },
+  { value: 'technical', label: 'Technical' },
+  { value: 'behavioral', label: 'Behavioral' },
+  { value: 'system_design', label: 'System Design' },
+  { value: 'final', label: 'Final' },
+  { value: 'phone_screen', label: 'Phone Screen' },
+  { value: 'onsite', label: 'Onsite' },
+  { value: 'virtual', label: 'Virtual' },
+  { value: 'other', label: 'Other' }
+]
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   interested: { bg: 'rgba(99, 102, 241, 0.1)', text: 'rgb(99, 102, 241)', border: 'rgb(99, 102, 241)' },
   applied: { bg: 'rgba(59, 130, 246, 0.1)', text: 'rgb(59, 130, 246)', border: 'rgb(59, 130, 246)' },
@@ -41,6 +54,7 @@ export function ApplicationsTracker() {
     status: 'applied' as Application['status'],
     applied_date: '',
     interview_date: '',
+    interview_type: '',
     reply_received: null as boolean | null,
     reply_date: '',
     notes: '',
@@ -58,14 +72,17 @@ export function ApplicationsTracker() {
   const initialEditValueRef = useRef<string>('')
   const statusSelectRef = useRef<HTMLSelectElement | null>(null)
   
-  const setEditInputRef = (element: HTMLInputElement | null) => {
-    editInputRef.current = element
+  const setEditInputRef = (element: HTMLInputElement | HTMLSelectElement | null) => {
+    editInputRef.current = element as HTMLInputElement | null
     if (element) {
       // Use requestAnimationFrame to ensure the element is fully mounted and DOM is updated
       requestAnimationFrame(() => {
         if (element) {
           element.focus()
-          element.select()
+          // Only call select() on input elements, not select elements
+          if (element instanceof HTMLInputElement) {
+            element.select()
+          }
         }
       })
     }
@@ -228,6 +245,7 @@ export function ApplicationsTracker() {
         job_description_id: applicationForm.job_description_id || null,
         applied_date: applicationForm.applied_date || null,
         interview_date: applicationForm.interview_date || null,
+        interview_type: applicationForm.interview_type || null,
         reply_received: null, // Start as waiting for reply
         reply_date: null
       }
@@ -249,6 +267,7 @@ export function ApplicationsTracker() {
           status: 'applied',
           applied_date: '',
           interview_date: '',
+          interview_type: '',
           reply_received: null,
           reply_date: '',
           notes: '',
@@ -272,6 +291,7 @@ export function ApplicationsTracker() {
       status: app.status,
       applied_date: app.applied_date || '',
       interview_date: app.interview_date || '',
+      interview_type: app.interview_type || '',
       reply_received: app.reply_received,
       reply_date: app.reply_date || '',
       notes: app.notes || '',
@@ -309,6 +329,7 @@ export function ApplicationsTracker() {
     else if (field === 'location') value = app.location || ''
     else if (field === 'salary_range') value = app.salary_range || ''
     else if (field === 'interview_date') value = app.interview_date ? app.interview_date.split('T')[0] : ''
+    else if (field === 'interview_type') value = app.interview_type || ''
     
     initialEditValueRef.current = value
     setEditingField({ appId: app.id, field })
@@ -316,9 +337,14 @@ export function ApplicationsTracker() {
     // Set the input value after a brief delay to ensure it's mounted
     requestAnimationFrame(() => {
       if (editInputRef.current) {
-        editInputRef.current.value = value
-        editInputRef.current.focus()
-        editInputRef.current.select()
+        if (editInputRef.current instanceof HTMLInputElement) {
+          editInputRef.current.value = value
+          editInputRef.current.focus()
+          editInputRef.current.select()
+        } else if (editInputRef.current instanceof HTMLSelectElement) {
+          editInputRef.current.value = value
+          editInputRef.current.focus()
+        }
       }
     })
   }
@@ -329,7 +355,14 @@ export function ApplicationsTracker() {
   }
 
   const handleSaveField = async (app: Application, field: string) => {
-    const currentValue = editInputRef.current?.value || ''
+    let currentValue = ''
+    if (editInputRef.current) {
+      if (editInputRef.current instanceof HTMLSelectElement) {
+        currentValue = editInputRef.current.value
+      } else {
+        currentValue = editInputRef.current.value || ''
+      }
+    }
     const trimmedValue = currentValue.trim()
     let updateData: any = {}
 
@@ -351,6 +384,8 @@ export function ApplicationsTracker() {
       updateData.salary_range = trimmedValue || null
     } else if (field === 'interview_date') {
       updateData.interview_date = trimmedValue || null
+    } else if (field === 'interview_type') {
+      updateData.interview_type = trimmedValue || null
     }
 
     try {
@@ -516,6 +551,7 @@ export function ApplicationsTracker() {
                 status: 'applied',
                 applied_date: '',
                 interview_date: '',
+                interview_type: '',
                 reply_received: null, // Start as waiting
                 reply_date: '',
                 notes: '',
@@ -852,13 +888,81 @@ export function ApplicationsTracker() {
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => e.stopPropagation()}
                           />
+                        ) : editingField?.appId === app.id && editingField.field === 'interview_type' ? (
+                          <select
+                            ref={(el) => {
+                              editInputRef.current = el as any
+                              if (el) {
+                                requestAnimationFrame(() => {
+                                  el.focus()
+                                })
+                              }
+                            }}
+                            className="inline-edit-select detail-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'interview_type')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'interview_type')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              // Update the value immediately for better UX
+                              const newValue = e.target.value
+                              if (editInputRef.current) {
+                                (editInputRef.current as HTMLSelectElement).value = newValue
+                              }
+                            }}
+                            autoFocus
+                          >
+                            <option value="">Select type</option>
+                            {INTERVIEW_TYPES.map(type => (
+                              <option key={type.value} value={type.value}>
+                                {type.label}
+                              </option>
+                            ))}
+                          </select>
                         ) : (
                           <span 
                             className={app.interview_date ? 'editable' : 'editable add-field'}
                             onClick={() => handleStartEdit(app, 'interview_date')}
-                            title="Click to edit"
+                            title="Click to edit date"
                           >
-                            {app.interview_date ? `Interview: ${new Date(app.interview_date).toLocaleDateString()}` : 'Add interview date'}
+                            {app.interview_date ? (
+                              <>
+                                Interview: {new Date(app.interview_date).toLocaleDateString()}
+                                {app.interview_type && (
+                                  <span className="interview-type-badge" onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleStartEdit(app, 'interview_type')
+                                  }} title="Click to change type">
+                                    {' '}({INTERVIEW_TYPES.find(t => t.value === app.interview_type)?.label || app.interview_type})
+                                  </span>
+                                )}
+                              </>
+                            ) : 'Add interview date'}
+                          </span>
+                        )}
+                        {!editingField && app.interview_date && !app.interview_type && (
+                          <span 
+                            className="editable add-field interview-type-add"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleStartEdit(app, 'interview_type')
+                            }}
+                            title="Add interview type"
+                          >
+                            + Type
                           </span>
                         )}
                       </div>
@@ -1150,6 +1254,23 @@ export function ApplicationsTracker() {
                       value={applicationForm.interview_date}
                       onChange={(e) => setApplicationForm({ ...applicationForm, interview_date: e.target.value })}
                     />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Interview Type</label>
+                    <select
+                      value={applicationForm.interview_type}
+                      onChange={(e) => setApplicationForm({ ...applicationForm, interview_type: e.target.value })}
+                    >
+                      <option value="">Select type</option>
+                      {INTERVIEW_TYPES.map(type => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1886,6 +2007,47 @@ export function ApplicationsTracker() {
 
         .inline-edit-input.detail-input {
           min-width: 120px;
+        }
+
+        .inline-edit-select {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-sm);
+          padding: 4px 8px;
+          font-size: 0.875rem;
+          color: var(--text-primary);
+          font-family: inherit;
+          outline: none;
+          min-width: 150px;
+          box-shadow: 0 0 0 2px var(--accent-glow);
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 8px center;
+          padding-right: 28px;
+          cursor: pointer;
+        }
+
+        .interview-type-badge {
+          color: var(--accent-primary);
+          font-weight: 500;
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+
+        .interview-type-badge:hover {
+          background: var(--accent-glow);
+          text-decoration: underline;
+        }
+
+        .interview-type-add {
+          margin-left: var(--space-xs);
+          font-size: 0.75rem;
+          padding: 2px 6px;
         }
 
         .detail-item.reply-received {

@@ -72,6 +72,7 @@ export interface Application {
   status: 'interested' | 'applied' | 'interviewing' | 'offer' | 'rejected' | 'withdrawn' | 'accepted'
   applied_date?: string
   interview_date?: string
+  interview_type?: string
   reply_received: boolean | null // null = waiting, false = no reply, true = reply received
   reply_date?: string
   notes?: string
