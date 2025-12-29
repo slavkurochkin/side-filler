@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Briefcase, Plus, Edit3, Trash2, Filter, X, Calendar, MapPin, 
   DollarSign, ExternalLink, CheckCircle2, Clock, FileText, 
-  TrendingUp, ChevronDown, Save, AlertCircle, GitBranch, User, MessageSquare
+  TrendingUp, ChevronDown, Save, AlertCircle, History, User, MessageSquare
 } from 'lucide-react'
 import { JobSearchCycle, Application, ApplicationStats, ApplicationEvent } from '../types'
 
@@ -1474,7 +1474,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                         className="timeline-toggle"
                         onClick={() => handleToggleTimeline(app.id)}
                       >
-                        <GitBranch size={14} />
+                        <Clock size={14} />
                         <span>Timeline ({app.events?.length || 0} events)</span>
                         <ChevronDown 
                           size={14} 
