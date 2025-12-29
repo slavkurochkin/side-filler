@@ -177,9 +177,11 @@ router.get('/', async (req: Request, res: Response) => {
       SELECT 
         a.*,
         jd.title as job_description_title,
-        jd.job_posting_url as job_description_url
+        jd.job_posting_url as job_description_url,
+        r.name as resume_name
       FROM applications a
       LEFT JOIN job_descriptions jd ON a.job_description_id = jd.id
+      LEFT JOIN resumes r ON a.resume_id = r.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -218,9 +220,11 @@ router.get('/cycle/:cycleId', async (req: Request, res: Response) => {
       SELECT 
         a.*,
         jd.title as job_description_title,
-        jd.job_posting_url as job_description_url
+        jd.job_posting_url as job_description_url,
+        r.name as resume_name
       FROM applications a
       LEFT JOIN job_descriptions jd ON a.job_description_id = jd.id
+      LEFT JOIN resumes r ON a.resume_id = r.id
       WHERE a.cycle_id = $1
     `;
     const params: any[] = [cycleId];
@@ -248,9 +252,17 @@ router.get('/cycle/:cycleId', async (req: Request, res: Response) => {
     );
     
     res.json(applicationsWithEvents);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching applications for cycle:', error);
-    res.status(500).json({ error: 'Failed to fetch applications for cycle' });
+    // Check if error is due to missing column
+    if (error.message && error.message.includes('column') && error.message.includes('resume_id')) {
+      res.status(500).json({ 
+        error: 'Database migration required: resume_id column missing. Please run migration_add_resume_id_to_applications.sql',
+        details: error.message 
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to fetch applications for cycle', details: error.message });
+    }
   }
 });
 
@@ -264,9 +276,11 @@ router.get('/:id', async (req: Request, res: Response) => {
         a.*,
         jd.title as job_description_title,
         jd.job_posting_url as job_description_url,
+        r.name as resume_name,
         c.name as cycle_name
       FROM applications a
       LEFT JOIN job_descriptions jd ON a.job_description_id = jd.id
+      LEFT JOIN resumes r ON a.resume_id = r.id
       LEFT JOIN job_search_cycles c ON a.cycle_id = c.id
       WHERE a.id = $1`,
       [id]
@@ -289,6 +303,7 @@ router.post('/', async (req: Request, res: Response) => {
     const {
       cycle_id,
       job_description_id,
+      resume_id,
       company_name,
       job_title,
       status,
@@ -317,15 +332,16 @@ router.post('/', async (req: Request, res: Response) => {
     
     const result = await pool.query(
       `INSERT INTO applications (
-        cycle_id, job_description_id, company_name, job_title, status,
+        cycle_id, job_description_id, resume_id, company_name, job_title, status,
         applied_date, interview_date, interview_type, notes,
         job_posting_url, salary_range, location
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         cycle_id,
         job_description_id || null,
+        resume_id || null,
         company_name,
         job_title,
         status || 'applied',
@@ -358,6 +374,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const {
       cycle_id,
       job_description_id,
+      resume_id,
       company_name,
       job_title,
       status,
@@ -383,6 +400,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (job_description_id !== undefined) {
       updates.push(`job_description_id = $${paramIndex}`);
       values.push(job_description_id);
+      paramIndex++;
+    }
+    if (resume_id !== undefined) {
+      updates.push(`resume_id = $${paramIndex}`);
+      values.push(resume_id);
       paramIndex++;
     }
     if (company_name !== undefined) {

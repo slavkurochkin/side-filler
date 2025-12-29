@@ -158,9 +158,11 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     job_posting_url: '',
     salary_range: '',
     location: '',
-    job_description_id: ''
+    job_description_id: '',
+    resume_id: ''
   })
   const [jobDescriptions, setJobDescriptions] = useState<Array<{ id: string; title: string | null }>>([])
+  const [resumes, setResumes] = useState<Array<{ id: string; name: string }>>([])
   const [isCreatingNewJobDescription, setIsCreatingNewJobDescription] = useState(false)
   const [newJobDescriptionContent, setNewJobDescriptionContent] = useState('')
   const [newJobDescriptionTitle, setNewJobDescriptionTitle] = useState('')
@@ -203,6 +205,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
   useEffect(() => {
     fetchCycles()
     fetchJobDescriptions()
+    fetchResumes()
   }, [])
 
   useEffect(() => {
@@ -262,6 +265,18 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
       }
     } catch (error) {
       console.error('Failed to fetch job descriptions:', error)
+    }
+  }
+
+  const fetchResumes = async () => {
+    try {
+      const response = await fetch(`${API_URL}/resumes`)
+      if (response.ok) {
+        const data = await response.json()
+        setResumes(data.map((r: any) => ({ id: r.id, name: r.name })))
+      }
+    } catch (error) {
+      console.error('Failed to fetch resumes:', error)
     }
   }
 
@@ -466,6 +481,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         ...applicationForm,
         cycle_id: selectedCycleId,
         job_description_id: applicationForm.job_description_id || null,
+        resume_id: applicationForm.resume_id || null,
         applied_date: applicationForm.applied_date || null,
         interview_date: applicationForm.interview_date || null,
         interview_type: applicationForm.interview_type || null,
@@ -493,7 +509,8 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           job_posting_url: '',
           salary_range: '',
           location: '',
-          job_description_id: ''
+          job_description_id: '',
+          resume_id: ''
         })
         setIsCreatingNewJobDescription(false)
         setNewJobDescriptionContent('')
@@ -518,7 +535,8 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
       job_posting_url: app.job_posting_url || '',
       salary_range: app.salary_range || '',
       location: app.location || '',
-      job_description_id: app.job_description_id || ''
+      job_description_id: app.job_description_id || '',
+      resume_id: app.resume_id || ''
     })
     setIsCreatingNewJobDescription(false)
     setNewJobDescriptionContent('')
@@ -1682,7 +1700,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                       )}
                     </div>
 
-                    {(app.job_posting_url || app.job_description_title || app.notes) && (
+                    {(app.job_posting_url || app.job_description_title || app.resume_name || app.notes) && (
                       <div className="application-footer">
                         {app.job_posting_url && (
                           <a
@@ -1699,6 +1717,12 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                           <span className="job-desc-link">
                             <FileText size={14} />
                             {app.job_description_title}
+                          </span>
+                        )}
+                        {app.resume_name && (
+                          <span className="job-desc-link">
+                            <FileText size={14} />
+                            Resume: {app.resume_name}
                           </span>
                         )}
                         {app.notes && (
@@ -2061,6 +2085,24 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                       </div>
                     </div>
                   )}
+                </div>
+
+                <div className="form-group">
+                  <label>Resume</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <select
+                      value={applicationForm.resume_id}
+                      onChange={(e) => {
+                        setApplicationForm({ ...applicationForm, resume_id: e.target.value })
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="">None</option>
+                      {resumes.map(resume => (
+                        <option key={resume.id} value={resume.id}>{resume.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="form-group">

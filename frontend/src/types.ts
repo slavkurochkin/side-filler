@@ -80,6 +80,7 @@ export interface Application {
   id: string
   cycle_id: string
   job_description_id?: string
+  resume_id?: string
   company_name: string
   job_title: string
   status: 'interested' | 'applied' | 'recruiter_contacted' | 'interviewing' | 'follow_up' | 'offer' | 'rejected' | 'withdrawn' | 'accepted' | 'other'
@@ -94,6 +95,7 @@ export interface Application {
   updated_at: string
   job_description_title?: string
   job_description_url?: string
+  resume_name?: string
   cycle_name?: string
   events?: ApplicationEvent[]
 }
