@@ -355,40 +355,87 @@ router.put('/:id', async (req: Request, res: Response) => {
       location
     } = req.body;
     
-    const result = await pool.query(
-      `UPDATE applications 
-       SET cycle_id = COALESCE($2, cycle_id),
-           job_description_id = $3,
-           company_name = COALESCE($4, company_name),
-           job_title = COALESCE($5, job_title),
-           status = COALESCE($6, status),
-           applied_date = $7,
-           interview_date = $8,
-           reply_received = $9,
-           reply_date = $10,
-           notes = COALESCE($11, notes),
-           job_posting_url = COALESCE($12, job_posting_url),
-           salary_range = COALESCE($13, salary_range),
-           location = COALESCE($14, location)
+    // Build dynamic UPDATE query to only update provided fields
+    const updates: string[] = [];
+    const values: any[] = [id];
+    let paramIndex = 2;
+    
+    if (cycle_id !== undefined) {
+      updates.push(`cycle_id = $${paramIndex}`);
+      values.push(cycle_id);
+      paramIndex++;
+    }
+    if (job_description_id !== undefined) {
+      updates.push(`job_description_id = $${paramIndex}`);
+      values.push(job_description_id);
+      paramIndex++;
+    }
+    if (company_name !== undefined) {
+      updates.push(`company_name = $${paramIndex}`);
+      values.push(company_name);
+      paramIndex++;
+    }
+    if (job_title !== undefined) {
+      updates.push(`job_title = $${paramIndex}`);
+      values.push(job_title);
+      paramIndex++;
+    }
+    if (status !== undefined) {
+      updates.push(`status = $${paramIndex}`);
+      values.push(status);
+      paramIndex++;
+    }
+    if (applied_date !== undefined) {
+      updates.push(`applied_date = $${paramIndex}`);
+      values.push(applied_date);
+      paramIndex++;
+    }
+    if (interview_date !== undefined) {
+      updates.push(`interview_date = $${paramIndex}`);
+      values.push(interview_date);
+      paramIndex++;
+    }
+    if (reply_received !== undefined) {
+      updates.push(`reply_received = $${paramIndex}`);
+      values.push(reply_received);
+      paramIndex++;
+    }
+    if (reply_date !== undefined) {
+      updates.push(`reply_date = $${paramIndex}`);
+      values.push(reply_date);
+      paramIndex++;
+    }
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramIndex}`);
+      values.push(notes);
+      paramIndex++;
+    }
+    if (job_posting_url !== undefined) {
+      updates.push(`job_posting_url = $${paramIndex}`);
+      values.push(job_posting_url);
+      paramIndex++;
+    }
+    if (salary_range !== undefined) {
+      updates.push(`salary_range = $${paramIndex}`);
+      values.push(salary_range);
+      paramIndex++;
+    }
+    if (location !== undefined) {
+      updates.push(`location = $${paramIndex}`);
+      values.push(location);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const query = `UPDATE applications 
+       SET ${updates.join(', ')}
        WHERE id = $1
-       RETURNING *`,
-      [
-        id,
-        cycle_id,
-        job_description_id,
-        company_name,
-        job_title,
-        status,
-        applied_date,
-        interview_date,
-        reply_received,
-        reply_date,
-        notes,
-        job_posting_url,
-        salary_range,
-        location
-      ]
-    );
+       RETURNING *`;
+    
+    const result = await pool.query(query, values);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Application not found' });

@@ -52,6 +52,22 @@ export function ApplicationsTracker() {
   const [jobDescriptions, setJobDescriptions] = useState<Array<{ id: string; title: string | null }>>([])
   const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false)
   const cycleDropdownRef = useRef<HTMLDivElement>(null)
+  const [editingField, setEditingField] = useState<{ appId: string; field: string } | null>(null)
+  const editInputRef = useRef<HTMLInputElement | null>(null)
+  const initialEditValueRef = useRef<string>('')
+  
+  const setEditInputRef = (element: HTMLInputElement | null) => {
+    editInputRef.current = element
+    if (element) {
+      // Use requestAnimationFrame to ensure the element is fully mounted and DOM is updated
+      requestAnimationFrame(() => {
+        if (element) {
+          element.focus()
+          element.select()
+        }
+      })
+    }
+  }
 
   useEffect(() => {
     fetchCycles()
@@ -283,6 +299,74 @@ export function ApplicationsTracker() {
       console.error('Failed to update reply status:', error)
     }
   }
+
+  const handleStartEdit = (app: Application, field: string) => {
+    let value = ''
+    if (field === 'company_name') value = app.company_name
+    else if (field === 'job_title') value = app.job_title
+    else if (field === 'location') value = app.location || ''
+    else if (field === 'salary_range') value = app.salary_range || ''
+    else if (field === 'interview_date') value = app.interview_date ? app.interview_date.split('T')[0] : ''
+    
+    initialEditValueRef.current = value
+    setEditingField({ appId: app.id, field })
+    
+    // Set the input value after a brief delay to ensure it's mounted
+    requestAnimationFrame(() => {
+      if (editInputRef.current) {
+        editInputRef.current.value = value
+        editInputRef.current.focus()
+        editInputRef.current.select()
+      }
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingField(null)
+    initialEditValueRef.current = ''
+  }
+
+  const handleSaveField = async (app: Application, field: string) => {
+    const currentValue = editInputRef.current?.value || ''
+    const trimmedValue = currentValue.trim()
+    let updateData: any = {}
+
+    if (field === 'company_name') {
+      if (!trimmedValue) {
+        alert('Company name cannot be empty')
+        return
+      }
+      updateData.company_name = trimmedValue
+    } else if (field === 'job_title') {
+      if (!trimmedValue) {
+        alert('Job title cannot be empty')
+        return
+      }
+      updateData.job_title = trimmedValue
+    } else if (field === 'location') {
+      updateData.location = trimmedValue || null
+    } else if (field === 'salary_range') {
+      updateData.salary_range = trimmedValue || null
+    } else if (field === 'interview_date') {
+      updateData.interview_date = trimmedValue || null
+    }
+
+    try {
+      await fetch(`${API_URL}/applications/${app.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
+      await fetchApplications()
+      await fetchStats()
+      setEditingField(null)
+      initialEditValueRef.current = ''
+    } catch (error) {
+      console.error('Failed to update field:', error)
+      alert('Failed to update field')
+    }
+  }
+
 
   const handleDeleteApplication = async (id: string) => {
     if (!confirm('Delete this application?')) return
@@ -539,8 +623,72 @@ export function ApplicationsTracker() {
                   >
                     <div className="application-header">
                       <div className="application-title-section">
-                        <h3 className="company-name">{app.company_name}</h3>
-                        <h4 className="job-title">{app.job_title}</h4>
+                        {editingField?.appId === app.id && editingField.field === 'company_name' ? (
+                          <input
+                            key={`edit-${app.id}-company_name`}
+                            ref={setEditInputRef}
+                            type="text"
+                            className="inline-edit-input company-name-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'company_name')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'company_name')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <h3 
+                            className="company-name editable"
+                            onClick={() => handleStartEdit(app, 'company_name')}
+                            title="Click to edit"
+                          >
+                            {app.company_name}
+                          </h3>
+                        )}
+                        {editingField?.appId === app.id && editingField.field === 'job_title' ? (
+                          <input
+                            key={`edit-${app.id}-job_title`}
+                            ref={setEditInputRef}
+                            type="text"
+                            className="inline-edit-input job-title-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'job_title')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'job_title')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <h4 
+                            className="job-title editable"
+                            onClick={() => handleStartEdit(app, 'job_title')}
+                            title="Click to edit"
+                          >
+                            {app.job_title}
+                          </h4>
+                        )}
                       </div>
                       <div className="application-actions">
                         <span
@@ -571,30 +719,119 @@ export function ApplicationsTracker() {
                     </div>
 
                     <div className="application-details">
-                      {app.location && (
-                        <div className="detail-item">
-                          <MapPin size={14} />
-                          <span>{app.location}</span>
-                        </div>
-                      )}
+                      <div className="detail-item">
+                        <MapPin size={14} />
+                        {editingField?.appId === app.id && editingField.field === 'location' ? (
+                          <input
+                            ref={setEditInputRef}
+                            type="text"
+                            className="inline-edit-input detail-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'location')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'location')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => e.stopPropagation()}
+                            placeholder="Location"
+                          />
+                        ) : (
+                          <span 
+                            className={app.location ? 'editable' : 'editable add-field'}
+                            onClick={() => handleStartEdit(app, 'location')}
+                            title="Click to edit"
+                          >
+                            {app.location || 'Add location'}
+                          </span>
+                        )}
+                      </div>
                       {app.applied_date && (
                         <div className="detail-item">
                           <Calendar size={14} />
                           <span>Applied: {new Date(app.applied_date).toLocaleDateString()}</span>
                         </div>
                       )}
-                      {app.interview_date && (
-                        <div className="detail-item">
-                          <Clock size={14} />
-                          <span>Interview: {new Date(app.interview_date).toLocaleDateString()}</span>
-                        </div>
-                      )}
-                      {app.salary_range && (
-                        <div className="detail-item">
-                          <DollarSign size={14} />
-                          <span>{app.salary_range}</span>
-                        </div>
-                      )}
+                      <div className="detail-item">
+                        <Clock size={14} />
+                        {editingField?.appId === app.id && editingField.field === 'interview_date' ? (
+                          <input
+                            ref={setEditInputRef}
+                            type="date"
+                            className="inline-edit-input detail-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'interview_date')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'interview_date')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span 
+                            className={app.interview_date ? 'editable' : 'editable add-field'}
+                            onClick={() => handleStartEdit(app, 'interview_date')}
+                            title="Click to edit"
+                          >
+                            {app.interview_date ? `Interview: ${new Date(app.interview_date).toLocaleDateString()}` : 'Add interview date'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="detail-item">
+                        <DollarSign size={14} />
+                        {editingField?.appId === app.id && editingField.field === 'salary_range' ? (
+                          <input
+                            ref={setEditInputRef}
+                            type="text"
+                            className="inline-edit-input detail-input"
+                            defaultValue={initialEditValueRef.current}
+                            onBlur={(e) => {
+                              e.stopPropagation()
+                              handleSaveField(app, 'salary_range')
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSaveField(app, 'salary_range')
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => e.stopPropagation()}
+                            placeholder="Salary range"
+                          />
+                        ) : (
+                          <span 
+                            className={app.salary_range ? 'editable' : 'editable add-field'}
+                            onClick={() => handleStartEdit(app, 'salary_range')}
+                            title="Click to edit"
+                          >
+                            {app.salary_range || 'Add salary'}
+                          </span>
+                        )}
+                      </div>
                       {/* Reply status - three states: null (waiting), true (received), false (no reply) */}
                       {app.reply_received === true ? (
                         <div className="detail-item reply-received">
@@ -1414,11 +1651,35 @@ export function ApplicationsTracker() {
           margin: 0 0 var(--space-xs) 0;
         }
 
+        .company-name.editable {
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+
+        .company-name.editable:hover {
+          background: var(--bg-hover);
+          outline: 1px dashed var(--border-hover);
+        }
+
         .job-title {
           font-size: 0.875rem;
           font-weight: 500;
           color: var(--text-secondary);
           margin: 0;
+        }
+
+        .job-title.editable {
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+
+        .job-title.editable:hover {
+          background: var(--bg-hover);
+          outline: 1px dashed var(--border-hover);
         }
 
         .application-actions {
@@ -1471,6 +1732,56 @@ export function ApplicationsTracker() {
           gap: var(--space-xs);
           font-size: 0.875rem;
           color: var(--text-secondary);
+        }
+
+        .detail-item .editable {
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+
+        .detail-item .editable:hover {
+          background: var(--bg-hover);
+          outline: 1px dashed var(--border-hover);
+        }
+
+        .detail-item .editable.add-field {
+          color: var(--text-muted);
+          font-style: italic;
+        }
+
+        .detail-item .editable.add-field:hover {
+          color: var(--text-secondary);
+        }
+
+        .inline-edit-input {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--accent-primary);
+          border-radius: var(--radius-sm);
+          padding: 4px 8px;
+          font-size: 0.875rem;
+          color: var(--text-primary);
+          font-family: inherit;
+          outline: none;
+          min-width: 100px;
+          box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        .inline-edit-input.company-name-input {
+          font-size: 1.125rem;
+          font-weight: 600;
+          min-width: 200px;
+        }
+
+        .inline-edit-input.job-title-input {
+          font-size: 0.875rem;
+          font-weight: 500;
+          min-width: 200px;
+        }
+
+        .inline-edit-input.detail-input {
+          min-width: 120px;
         }
 
         .detail-item.reply-received {
