@@ -53,8 +53,10 @@ export function ApplicationsTracker() {
   const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false)
   const cycleDropdownRef = useRef<HTMLDivElement>(null)
   const [editingField, setEditingField] = useState<{ appId: string; field: string } | null>(null)
+  const [editingStatus, setEditingStatus] = useState<string | null>(null)
   const editInputRef = useRef<HTMLInputElement | null>(null)
   const initialEditValueRef = useRef<string>('')
+  const statusSelectRef = useRef<HTMLSelectElement | null>(null)
   
   const setEditInputRef = (element: HTMLInputElement | null) => {
     editInputRef.current = element
@@ -364,6 +366,27 @@ export function ApplicationsTracker() {
     } catch (error) {
       console.error('Failed to update field:', error)
       alert('Failed to update field')
+    }
+  }
+
+  const handleStatusChange = async (app: Application, newStatus: Application['status']) => {
+    if (newStatus === app.status) {
+      setEditingStatus(null)
+      return
+    }
+
+    try {
+      await fetch(`${API_URL}/applications/${app.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+      await fetchApplications()
+      await fetchStats()
+      setEditingStatus(null)
+    } catch (error) {
+      console.error('Failed to update status:', error)
+      alert('Failed to update status')
     }
   }
 
@@ -691,16 +714,59 @@ export function ApplicationsTracker() {
                         )}
                       </div>
                       <div className="application-actions">
-                        <span
-                          className="status-badge"
-                          style={{
-                            backgroundColor: statusColor.bg,
-                            color: statusColor.text,
-                            borderColor: statusColor.border
-                          }}
-                        >
-                          {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                        </span>
+                        {editingStatus === app.id ? (
+                          <select
+                            ref={statusSelectRef}
+                            className="status-select"
+                            value={app.status}
+                            onChange={(e) => {
+                              const newStatus = e.target.value as Application['status']
+                              const newStatusColor = STATUS_COLORS[newStatus] || STATUS_COLORS.applied
+                              // Update the select styling immediately for better UX
+                              if (statusSelectRef.current) {
+                                statusSelectRef.current.style.backgroundColor = newStatusColor.bg
+                                statusSelectRef.current.style.color = newStatusColor.text
+                                statusSelectRef.current.style.borderColor = newStatusColor.border
+                              }
+                              handleStatusChange(app, newStatus)
+                            }}
+                            onBlur={() => setEditingStatus(null)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              backgroundColor: statusColor.bg,
+                              color: statusColor.text,
+                              borderColor: statusColor.border
+                            }}
+                            autoFocus
+                          >
+                            {Object.keys(STATUS_COLORS).map(status => (
+                              <option key={status} value={status}>
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className="status-badge editable"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingStatus(app.id)
+                              requestAnimationFrame(() => {
+                                if (statusSelectRef.current) {
+                                  statusSelectRef.current.focus()
+                                }
+                              })
+                            }}
+                            style={{
+                              backgroundColor: statusColor.bg,
+                              color: statusColor.text,
+                              borderColor: statusColor.border
+                            }}
+                            title="Click to change status"
+                          >
+                            {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                          </span>
+                        )}
                         <button
                           className="action-btn edit-btn"
                           onClick={() => handleEditApplication(app)}
@@ -1689,11 +1755,49 @@ export function ApplicationsTracker() {
         }
 
         .status-badge {
-          padding: 4px 12px;
+          padding: 8px 16px;
           border-radius: var(--radius-md);
-          font-size: 0.75rem;
+          font-size: 0.875rem;
           font-weight: 600;
           border: 1px solid;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          user-select: none;
+        }
+
+        .status-badge.editable:hover {
+          opacity: 0.9;
+          transform: scale(1.05);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .status-select {
+          padding: 8px 16px;
+          border-radius: var(--radius-md);
+          font-size: 0.875rem;
+          font-weight: 600;
+          border: 1px solid;
+          cursor: pointer;
+          outline: none;
+          font-family: inherit;
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 36px;
+          box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        .status-select:focus {
+          box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .status-select option {
+          background: var(--bg-elevated);
+          color: var(--text-primary);
+          padding: 8px;
         }
 
         .action-btn {
