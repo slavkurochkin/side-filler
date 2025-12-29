@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Briefcase, Plus, Edit3, Trash2, Filter, X, Calendar, MapPin, 
   DollarSign, ExternalLink, CheckCircle2, Clock, FileText, 
-  TrendingUp, ChevronDown, Save, AlertCircle
+  TrendingUp, ChevronDown, Save, AlertCircle, GitBranch, User, MessageSquare
 } from 'lucide-react'
-import { JobSearchCycle, Application, ApplicationStats } from '../types'
+import { JobSearchCycle, Application, ApplicationStats, ApplicationEvent } from '../types'
 
 // Module loaded successfully
 
@@ -24,6 +24,18 @@ const INTERVIEW_TYPES = [
   { value: 'onsite', label: 'Onsite' },
   { value: 'virtual', label: 'Virtual' },
   { value: 'other', label: 'Other' }
+]
+
+const EVENT_TYPES = [
+  { value: 'applied', label: 'Applied', icon: Briefcase },
+  { value: 'recruiter_contacted', label: 'Recruiter Contacted', icon: MessageSquare },
+  { value: 'interview', label: 'Interview', icon: User },
+  { value: 'offer', label: 'Offer', icon: CheckCircle2 },
+  { value: 'rejected', label: 'Rejected', icon: X },
+  { value: 'withdrawn', label: 'Withdrawn', icon: X },
+  { value: 'accepted', label: 'Accepted', icon: CheckCircle2 },
+  { value: 'follow_up', label: 'Follow Up', icon: Clock },
+  { value: 'other', label: 'Other', icon: FileText }
 ]
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -68,6 +80,15 @@ export function ApplicationsTracker() {
   const cycleDropdownRef = useRef<HTMLDivElement>(null)
   const [editingField, setEditingField] = useState<{ appId: string; field: string } | null>(null)
   const [editingStatus, setEditingStatus] = useState<string | null>(null)
+  const [expandedTimeline, setExpandedTimeline] = useState<Set<string>>(new Set())
+  const [editingEvent, setEditingEvent] = useState<{ appId: string; eventId: string | null } | null>(null)
+  const [eventForm, setEventForm] = useState({
+    event_type: 'applied' as ApplicationEvent['event_type'],
+    interview_type: '',
+    event_date: '',
+    notes: '',
+    result: null as 'pass' | 'fail' | null
+  })
   const editInputRef = useRef<HTMLInputElement | null>(null)
   const initialEditValueRef = useRef<string>('')
   const statusSelectRef = useRef<HTMLSelectElement | null>(null)
@@ -422,6 +443,97 @@ export function ApplicationsTracker() {
     } catch (error) {
       console.error('Failed to update status:', error)
       alert('Failed to update status')
+    }
+  }
+
+  const handleToggleTimeline = (appId: string) => {
+    const newExpanded = new Set(expandedTimeline)
+    if (newExpanded.has(appId)) {
+      newExpanded.delete(appId)
+    } else {
+      newExpanded.add(appId)
+    }
+    setExpandedTimeline(newExpanded)
+  }
+
+  const handleAddEvent = (app: Application) => {
+    setEditingEvent({ appId: app.id, eventId: null })
+    setEventForm({
+      event_type: 'applied',
+      interview_type: '',
+      event_date: new Date().toISOString().split('T')[0],
+      notes: '',
+      result: null
+    })
+  }
+
+  const handleEditEvent = (app: Application, event: ApplicationEvent) => {
+    setEditingEvent({ appId: app.id, eventId: event.id })
+    setEventForm({
+      event_type: event.event_type,
+      interview_type: event.interview_type || '',
+      event_date: event.event_date,
+      notes: event.notes || '',
+      result: event.result || null
+    })
+  }
+
+  const handleCancelEventEdit = () => {
+    setEditingEvent(null)
+    setEventForm({
+      event_type: 'applied',
+      interview_type: '',
+      event_date: '',
+      notes: '',
+      result: null
+    })
+  }
+
+  const handleSaveEvent = async (app: Application) => {
+    if (!eventForm.event_date || !eventForm.event_type) {
+      alert('Event date and type are required')
+      return
+    }
+
+    try {
+      const url = editingEvent?.eventId
+        ? `${API_URL}/applications/events/${editingEvent.eventId}`
+        : `${API_URL}/applications/${app.id}/events`
+      const method = editingEvent?.eventId ? 'PUT' : 'POST'
+
+      const body = {
+        event_type: eventForm.event_type,
+        event_date: eventForm.event_date,
+        interview_type: eventForm.event_type === 'interview' ? (eventForm.interview_type || null) : null,
+        notes: eventForm.notes || null,
+        result: eventForm.result || null
+      }
+
+      await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      await fetchApplications()
+      handleCancelEventEdit()
+    } catch (error) {
+      console.error('Failed to save event:', error)
+      alert('Failed to save event')
+    }
+  }
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm('Delete this event?')) return
+
+    try {
+      await fetch(`${API_URL}/applications/events/${eventId}`, {
+        method: 'DELETE'
+      })
+      await fetchApplications()
+    } catch (error) {
+      console.error('Failed to delete event:', error)
+      alert('Failed to delete event')
     }
   }
 
@@ -1045,6 +1157,197 @@ export function ApplicationsTracker() {
                             <AlertCircle size={14} />
                             <span>No Reply</span>
                           </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Timeline Section */}
+                    <div className="timeline-section">
+                      <button
+                        className="timeline-toggle"
+                        onClick={() => handleToggleTimeline(app.id)}
+                      >
+                        <GitBranch size={14} />
+                        <span>Timeline ({app.events?.length || 0} events)</span>
+                        <ChevronDown 
+                          size={14} 
+                          className={expandedTimeline.has(app.id) ? 'open' : ''} 
+                        />
+                      </button>
+                      
+                      {expandedTimeline.has(app.id) && (
+                        <div className="timeline-content">
+                          {editingEvent?.appId === app.id ? (
+                            <div className="event-form">
+                              <div className="event-form-row">
+                                <div className="event-form-group">
+                                  <label>Event Type</label>
+                                  <select
+                                    value={eventForm.event_type}
+                                    onChange={(e) => setEventForm({ 
+                                      ...eventForm, 
+                                      event_type: e.target.value as ApplicationEvent['event_type'] 
+                                    })}
+                                  >
+                                    {EVENT_TYPES.map(type => (
+                                      <option key={type.value} value={type.value}>
+                                        {type.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {eventForm.event_type === 'interview' && (
+                                  <div className="event-form-group">
+                                    <label>Interview Type</label>
+                                    <select
+                                      value={eventForm.interview_type}
+                                      onChange={(e) => setEventForm({ 
+                                        ...eventForm, 
+                                        interview_type: e.target.value 
+                                      })}
+                                    >
+                                      <option value="">Select type</option>
+                                      {INTERVIEW_TYPES.map(type => (
+                                        <option key={type.value} value={type.value}>
+                                          {type.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+                                <div className="event-form-group">
+                                  <label>Date</label>
+                                  <input
+                                    type="date"
+                                    value={eventForm.event_date}
+                                    onChange={(e) => setEventForm({ 
+                                      ...eventForm, 
+                                      event_date: e.target.value 
+                                    })}
+                                  />
+                                </div>
+                              </div>
+                              <div className="event-form-row">
+                                <div className="event-form-group">
+                                  <label>Result</label>
+                                  <select
+                                    value={eventForm.result || ''}
+                                    onChange={(e) => setEventForm({ 
+                                      ...eventForm, 
+                                      result: e.target.value === '' ? null : e.target.value as 'pass' | 'fail'
+                                    })}
+                                  >
+                                    <option value="">Pending</option>
+                                    <option value="pass">Pass</option>
+                                    <option value="fail">Fail</option>
+                                  </select>
+                                </div>
+                                <div className="event-form-group" style={{ gridColumn: 'span 2' }}>
+                                  <label>Notes</label>
+                                  <textarea
+                                    value={eventForm.notes}
+                                    onChange={(e) => setEventForm({ 
+                                      ...eventForm, 
+                                      notes: e.target.value 
+                                    })}
+                                    placeholder="Optional notes..."
+                                    rows={2}
+                                  />
+                                </div>
+                              </div>
+                              <div className="event-form-actions">
+                                <button
+                                  className="btn-save"
+                                  onClick={() => handleSaveEvent(app)}
+                                >
+                                  <Save size={14} />
+                                  Save
+                                </button>
+                                <button
+                                  className="btn-cancel"
+                                  onClick={handleCancelEventEdit}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {app.events && app.events.length > 0 ? (
+                                <div className="timeline-events">
+                                  {app.events.map((event, index) => {
+                                    const eventTypeConfig = EVENT_TYPES.find(t => t.value === event.event_type)
+                                    const EventIcon = eventTypeConfig?.icon || FileText
+                                    const isPass = event.result === 'pass'
+                                    const isFail = event.result === 'fail'
+                                    return (
+                                      <div 
+                                        key={event.id} 
+                                        className={`timeline-event ${isPass ? 'timeline-event-pass' : ''} ${isFail ? 'timeline-event-fail' : ''}`}
+                                      >
+                                        <div className="timeline-event-connector">
+                                          {index > 0 && <div className={`timeline-connector-line ${isPass ? 'connector-pass' : ''} ${isFail ? 'connector-fail' : ''}`}></div>}
+                                          <div className={`timeline-event-icon ${isPass ? 'icon-pass' : ''} ${isFail ? 'icon-fail' : ''}`}>
+                                            <EventIcon size={16} />
+                                          </div>
+                                        </div>
+                                        <div className="timeline-event-content">
+                                          <div className={`timeline-event-type ${isPass ? 'type-pass' : ''} ${isFail ? 'type-fail' : ''}`}>
+                                            {eventTypeConfig?.label || event.event_type}
+                                            {event.interview_type && (
+                                              <span className="timeline-interview-type">
+                                                {' '}({INTERVIEW_TYPES.find(t => t.value === event.interview_type)?.label || event.interview_type})
+                                              </span>
+                                            )}
+                                            {event.result && (
+                                              <span className={`timeline-result-badge ${event.result}`}>
+                                                {event.result === 'pass' ? '✓ Pass' : '✗ Fail'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className={`timeline-event-date ${isPass ? 'date-pass' : ''} ${isFail ? 'date-fail' : ''}`}>
+                                            {new Date(event.event_date).toLocaleDateString()}
+                                          </div>
+                                          {event.notes && (
+                                            <div className="timeline-event-notes">
+                                              {event.notes}
+                                            </div>
+                                          )}
+                                          <div className="timeline-event-actions">
+                                            <button
+                                              className="action-btn edit-btn"
+                                              onClick={() => handleEditEvent(app, event)}
+                                              title="Edit"
+                                            >
+                                              <Edit3 size={12} />
+                                            </button>
+                                            <button
+                                              className="action-btn delete-btn"
+                                              onClick={() => handleDeleteEvent(event.id)}
+                                              title="Delete"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="timeline-empty">
+                                  <p>No events yet. Add events to track your application progress.</p>
+                                </div>
+                              )}
+                              <button
+                                className="add-event-btn"
+                                onClick={() => handleAddEvent(app)}
+                              >
+                                <Plus size={14} />
+                                Add Event
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1812,6 +2115,8 @@ export function ApplicationsTracker() {
           border-radius: var(--radius-lg);
           padding: var(--space-lg);
           transition: all var(--transition-fast);
+          overflow: visible;
+          position: relative;
         }
 
         .application-card:hover {
@@ -2152,6 +2457,343 @@ export function ApplicationsTracker() {
         .toggle-reply-btn:hover {
           background: rgba(239, 68, 68, 0.15);
           color: var(--accent-danger);
+        }
+
+        .timeline-section {
+          margin-top: var(--space-md);
+          border-top: 1px solid var(--border-subtle);
+          padding-top: var(--space-md);
+        }
+
+        .timeline-toggle {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          width: 100%;
+          padding: var(--space-sm);
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          text-align: left;
+        }
+
+        .timeline-toggle:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .timeline-toggle svg:last-child {
+          margin-left: auto;
+          transition: transform var(--transition-fast);
+        }
+
+        .timeline-toggle svg:last-child.open {
+          transform: rotate(180deg);
+        }
+
+        .timeline-content {
+          margin-top: var(--space-md);
+          overflow: visible;
+          position: relative;
+        }
+
+        .timeline-events {
+          display: flex;
+          flex-direction: row;
+          gap: 0;
+          margin-bottom: var(--space-md);
+          overflow-x: auto;
+          overflow-y: visible;
+          padding: var(--space-sm) var(--space-sm) var(--space-md) var(--space-sm);
+          position: relative;
+        }
+
+        .timeline-events::-webkit-scrollbar {
+          height: 6px;
+        }
+
+        .timeline-events::-webkit-scrollbar-track {
+          background: var(--bg-tertiary);
+          border-radius: 3px;
+        }
+
+        .timeline-events::-webkit-scrollbar-thumb {
+          background: var(--border-default);
+          border-radius: 3px;
+        }
+
+        .timeline-events::-webkit-scrollbar-thumb:hover {
+          background: var(--border-hover);
+        }
+
+        .timeline-event {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+          min-width: 120px;
+          max-width: 150px;
+          flex-shrink: 0;
+          padding: var(--space-sm);
+          z-index: 1;
+          transition: z-index var(--transition-fast);
+        }
+
+        .timeline-event:hover {
+          z-index: 10;
+        }
+
+        .timeline-event-connector {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          position: relative;
+          margin-bottom: var(--space-xs);
+        }
+
+        .timeline-connector-line {
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: var(--border-subtle);
+          z-index: 0;
+        }
+
+        .timeline-event-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: var(--bg-tertiary);
+          border: 2px solid var(--border-default);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--accent-primary);
+          flex-shrink: 0;
+          z-index: 2;
+          position: relative;
+          transition: all var(--transition-fast);
+        }
+
+        .timeline-event-icon.icon-pass {
+          background: rgba(34, 197, 94, 0.1);
+          border-color: rgb(34, 197, 94);
+          color: rgb(34, 197, 94);
+        }
+
+        .timeline-event-icon.icon-fail {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: rgb(239, 68, 68);
+          color: rgb(239, 68, 68);
+        }
+
+        .timeline-event:hover .timeline-event-icon {
+          transform: scale(1.1);
+        }
+
+        .timeline-event:hover .timeline-event-icon.icon-pass {
+          background: rgba(34, 197, 94, 0.2);
+        }
+
+        .timeline-event:hover .timeline-event-icon.icon-fail {
+          background: rgba(239, 68, 68, 0.2);
+        }
+
+        .timeline-event-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          width: 100%;
+          gap: var(--space-xs);
+          position: relative;
+          z-index: 1;
+        }
+
+        .timeline-event-type {
+          font-weight: 600;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          line-height: 1.3;
+        }
+
+        .timeline-event-type.type-pass {
+          color: rgb(34, 197, 94);
+        }
+
+        .timeline-event-type.type-fail {
+          color: rgb(239, 68, 68);
+        }
+
+        .timeline-interview-type {
+          font-weight: 400;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          display: block;
+          margin-top: 2px;
+        }
+
+        .timeline-result-badge {
+          display: inline-block;
+          margin-left: var(--space-xs);
+          padding: 2px 6px;
+          border-radius: var(--radius-sm);
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .timeline-result-badge.pass {
+          background: rgba(34, 197, 94, 0.1);
+          color: rgb(34, 197, 94);
+        }
+
+        .timeline-result-badge.fail {
+          background: rgba(239, 68, 68, 0.1);
+          color: rgb(239, 68, 68);
+        }
+
+        .timeline-event-date {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          margin-top: var(--space-xs);
+        }
+
+        .timeline-event-date.date-pass {
+          color: rgb(34, 197, 94);
+        }
+
+        .timeline-event-date.date-fail {
+          color: rgb(239, 68, 68);
+        }
+
+        .timeline-connector-line.connector-pass {
+          background: rgba(34, 197, 94, 0.3);
+        }
+
+        .timeline-connector-line.connector-fail {
+          background: rgba(239, 68, 68, 0.3);
+        }
+
+        .timeline-event-notes {
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          line-height: 1.4;
+          margin-top: var(--space-xs);
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+
+        .timeline-event-actions {
+          display: flex;
+          gap: var(--space-xs);
+          margin-top: var(--space-xs);
+          opacity: 0;
+          transition: opacity var(--transition-fast);
+        }
+
+        .timeline-event:hover .timeline-event-actions {
+          opacity: 1;
+        }
+
+        .timeline-event-actions .action-btn {
+          padding: 4px;
+          font-size: 0.75rem;
+        }
+
+        .timeline-empty {
+          padding: var(--space-lg);
+          text-align: center;
+          color: var(--text-muted);
+          font-size: 0.875rem;
+        }
+
+        .add-event-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--space-xs);
+          width: 100%;
+          padding: var(--space-sm);
+          background: var(--bg-tertiary);
+          border: 1px dashed var(--border-default);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .add-event-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--accent-primary);
+          color: var(--accent-primary);
+        }
+
+        .event-form {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          padding: var(--space-md);
+          margin-bottom: var(--space-md);
+        }
+
+        .event-form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: var(--space-md);
+          margin-bottom: var(--space-md);
+        }
+
+        .event-form-group {
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-xs);
+        }
+
+        .event-form-group label {
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+        }
+
+        .event-form-group select,
+        .event-form-group input,
+        .event-form-group textarea {
+          padding: 6px 10px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          font-family: inherit;
+        }
+
+        .event-form-group textarea {
+          resize: vertical;
+        }
+
+        .event-form-actions {
+          display: flex;
+          gap: var(--space-sm);
+          justify-content: flex-end;
+        }
+
+        .event-form-actions .btn-save,
+        .event-form-actions .btn-cancel {
+          padding: 6px 12px;
+          font-size: 0.875rem;
         }
 
         .application-footer {

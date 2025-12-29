@@ -234,7 +234,20 @@ router.get('/cycle/:cycleId', async (req: Request, res: Response) => {
     
     const result = await pool.query(query, params);
     
-    res.json(result.rows);
+    // Fetch events for each application
+    const applicationsWithEvents = await Promise.all(
+      result.rows.map(async (app: any) => {
+        const eventsResult = await pool.query(
+          `SELECT * FROM application_events 
+           WHERE application_id = $1 
+           ORDER BY event_date ASC, sort_order ASC, created_at ASC`,
+          [app.id]
+        );
+        return { ...app, events: eventsResult.rows };
+      })
+    );
+    
+    res.json(applicationsWithEvents);
   } catch (error) {
     console.error('Error fetching applications for cycle:', error);
     res.status(500).json({ error: 'Failed to fetch applications for cycle' });
@@ -507,6 +520,155 @@ router.get('/cycles/:cycleId/stats', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching application statistics:', error);
     res.status(500).json({ error: 'Failed to fetch application statistics' });
+  }
+});
+
+// ==================== APPLICATION EVENTS (TIMELINE) ====================
+
+// Get all events for an application
+router.get('/:id/events', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `SELECT * FROM application_events 
+       WHERE application_id = $1 
+       ORDER BY event_date ASC, sort_order ASC, created_at ASC`,
+      [id]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching application events:', error);
+    res.status(500).json({ error: 'Failed to fetch application events' });
+  }
+});
+
+// Create a new application event
+router.post('/:id/events', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { event_type, interview_type, event_date, notes, sort_order, result } = req.body;
+    
+    if (!event_type || !event_date) {
+      return res.status(400).json({ error: 'event_type and event_date are required' });
+    }
+    
+    // Verify application exists
+    const appCheck = await pool.query(
+      'SELECT id FROM applications WHERE id = $1',
+      [id]
+    );
+    
+    if (appCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    // Get max sort_order if not provided
+    let finalSortOrder = sort_order;
+    if (finalSortOrder === undefined || finalSortOrder === null) {
+      const maxOrderResult = await pool.query(
+        'SELECT COALESCE(MAX(sort_order), 0) + 1 as next_order FROM application_events WHERE application_id = $1',
+        [id]
+      );
+      finalSortOrder = maxOrderResult.rows[0].next_order;
+    }
+    
+    const result_query = await pool.query(
+      `INSERT INTO application_events (application_id, event_type, interview_type, event_date, notes, sort_order, result)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [id, event_type, interview_type || null, event_date, notes || null, finalSortOrder, result || null]
+    );
+    
+    res.status(201).json(result_query.rows[0]);
+  } catch (error) {
+    console.error('Error creating application event:', error);
+    res.status(500).json({ error: 'Failed to create application event' });
+  }
+});
+
+// Update an application event
+router.put('/events/:eventId', async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const { event_type, interview_type, event_date, notes, sort_order, result } = req.body;
+    
+    const updates: string[] = [];
+    const values: any[] = [eventId];
+    let paramIndex = 2;
+    
+    if (event_type !== undefined) {
+      updates.push(`event_type = $${paramIndex}`);
+      values.push(event_type);
+      paramIndex++;
+    }
+    if (interview_type !== undefined) {
+      updates.push(`interview_type = $${paramIndex}`);
+      values.push(interview_type);
+      paramIndex++;
+    }
+    if (event_date !== undefined) {
+      updates.push(`event_date = $${paramIndex}`);
+      values.push(event_date);
+      paramIndex++;
+    }
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramIndex}`);
+      values.push(notes);
+      paramIndex++;
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${paramIndex}`);
+      values.push(sort_order);
+      paramIndex++;
+    }
+    if (result !== undefined) {
+      updates.push(`result = $${paramIndex}`);
+      values.push(result);
+      paramIndex++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const query = `UPDATE application_events 
+       SET ${updates.join(', ')}
+       WHERE id = $1
+       RETURNING *`;
+    
+    const queryResult = await pool.query(query, values);
+    
+    if (queryResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application event not found' });
+    }
+    
+    res.json(queryResult.rows[0]);
+  } catch (error) {
+    console.error('Error updating application event:', error);
+    res.status(500).json({ error: 'Failed to update application event' });
+  }
+});
+
+// Delete an application event
+router.delete('/events/:eventId', async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    
+    const result = await pool.query(
+      'DELETE FROM application_events WHERE id = $1 RETURNING *',
+      [eventId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Application event not found' });
+    }
+    
+    res.json({ message: 'Application event deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting application event:', error);
+    res.status(500).json({ error: 'Failed to delete application event' });
   }
 });
 

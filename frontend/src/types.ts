@@ -63,6 +63,19 @@ export interface JobSearchCycle {
   application_count?: number
 }
 
+export interface ApplicationEvent {
+  id: string
+  application_id: string
+  event_type: 'applied' | 'recruiter_contacted' | 'interview' | 'offer' | 'rejected' | 'withdrawn' | 'accepted' | 'follow_up' | 'other'
+  interview_type?: string
+  event_date: string
+  notes?: string
+  result?: 'pass' | 'fail' | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Application {
   id: string
   cycle_id: string
@@ -84,6 +97,7 @@ export interface Application {
   job_description_title?: string
   job_description_url?: string
   cycle_name?: string
+  events?: ApplicationEvent[]
 }
 
 export interface ApplicationStats {
