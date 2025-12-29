@@ -86,8 +86,6 @@ export interface Application {
   applied_date?: string
   interview_date?: string
   interview_type?: string
-  reply_received: boolean | null // null = waiting, false = no reply, true = reply received
-  reply_date?: string
   notes?: string
   job_posting_url?: string
   salary_range?: string
@@ -103,13 +101,9 @@ export interface Application {
 export interface ApplicationStats {
   total_applications: number
   applied_count: number
-  interviewing_count: number
   offer_count: number
   rejected_count: number
   accepted_count: number
-  replied_count: number
-  no_reply_count: number
-  waiting_reply_count: number
   interviews_scheduled: number
 }
 

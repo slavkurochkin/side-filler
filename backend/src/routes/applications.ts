@@ -294,8 +294,6 @@ router.post('/', async (req: Request, res: Response) => {
       status,
       applied_date,
       interview_date,
-      reply_received,
-      reply_date,
       notes,
       job_posting_url,
       salary_range,
@@ -319,10 +317,10 @@ router.post('/', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO applications (
         cycle_id, job_description_id, company_name, job_title, status,
-        applied_date, interview_date, interview_type, reply_received, reply_date, notes,
+        applied_date, interview_date, interview_type, notes,
         job_posting_url, salary_range, location
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         cycle_id,
@@ -333,8 +331,6 @@ router.post('/', async (req: Request, res: Response) => {
         applied_date || null,
         interview_date || null,
         interview_type || null,
-        reply_received ?? null, // Preserve null for waiting state
-        reply_date || null,
         notes || null,
         job_posting_url || null,
         salary_range || null,
@@ -362,8 +358,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       applied_date,
       interview_date,
       interview_type,
-      reply_received,
-      reply_date,
       notes,
       job_posting_url,
       salary_range,
@@ -413,16 +407,6 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (interview_type !== undefined) {
       updates.push(`interview_type = $${paramIndex}`);
       values.push(interview_type);
-      paramIndex++;
-    }
-    if (reply_received !== undefined) {
-      updates.push(`reply_received = $${paramIndex}`);
-      values.push(reply_received);
-      paramIndex++;
-    }
-    if (reply_date !== undefined) {
-      updates.push(`reply_date = $${paramIndex}`);
-      values.push(reply_date);
       paramIndex++;
     }
     if (notes !== undefined) {
@@ -502,17 +486,17 @@ router.get('/cycles/:cycleId/stats', async (req: Request, res: Response) => {
     const result = await pool.query(
       `SELECT 
         COUNT(*) as total_applications,
-        COUNT(*) FILTER (WHERE status = 'applied') as applied_count,
-        COUNT(*) FILTER (WHERE status = 'interviewing') as interviewing_count,
-        COUNT(*) FILTER (WHERE status = 'offer') as offer_count,
-        COUNT(*) FILTER (WHERE status = 'rejected') as rejected_count,
-        COUNT(*) FILTER (WHERE status = 'accepted') as accepted_count,
-        COUNT(*) FILTER (WHERE reply_received = TRUE) as replied_count,
-        COUNT(*) FILTER (WHERE reply_received = FALSE) as no_reply_count,
-        COUNT(*) FILTER (WHERE reply_received IS NULL) as waiting_reply_count,
+        COUNT(DISTINCT CASE WHEN ae_applied.event_type = 'applied' THEN applications.id END) as applied_count,
+        COUNT(DISTINCT CASE WHEN ae_offer.event_type = 'offer' THEN applications.id END) as offer_count,
+        COUNT(DISTINCT CASE WHEN ae_rejected.event_type = 'rejected' THEN applications.id END) as rejected_count,
+        COUNT(DISTINCT CASE WHEN ae_accepted.event_type = 'accepted' THEN applications.id END) as accepted_count,
         COUNT(*) FILTER (WHERE interview_date IS NOT NULL) as interviews_scheduled
       FROM applications
-      WHERE cycle_id = $1`,
+      LEFT JOIN application_events ae_applied ON ae_applied.application_id = applications.id AND ae_applied.event_type = 'applied'
+      LEFT JOIN application_events ae_offer ON ae_offer.application_id = applications.id AND ae_offer.event_type = 'offer'
+      LEFT JOIN application_events ae_rejected ON ae_rejected.application_id = applications.id AND ae_rejected.event_type = 'rejected'
+      LEFT JOIN application_events ae_accepted ON ae_accepted.application_id = applications.id AND ae_accepted.event_type = 'accepted'
+      WHERE applications.cycle_id = $1`,
       [cycleId]
     );
     

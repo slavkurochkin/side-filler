@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FileText, X } from 'lucide-react'
 import { ResumePanel } from './components/ResumePanel'
@@ -39,6 +39,7 @@ function App() {
     const saved = localStorage.getItem('current-page')
     return (saved as Page) || 'resume-builder'
   })
+  const [applicationsTrackerControls, setApplicationsTrackerControls] = useState<React.ReactNode>(null)
 
 
   // Load template from localStorage
@@ -291,6 +292,7 @@ function App() {
           onFocusModeChange={setIsFocusMode}
           currentPage={currentPage}
           onPageChange={setCurrentPage}
+          applicationsTrackerControls={applicationsTrackerControls}
         />
       )}
 
@@ -459,7 +461,7 @@ function App() {
               {(() => {
                 console.log('🔵 App.tsx: Rendering ApplicationsTracker, currentPage:', currentPage)
                 try {
-                  return <ApplicationsTracker />
+                  return <ApplicationsTracker onControlsReady={setApplicationsTrackerControls} />
                 } catch (error) {
                   console.error('🔴 Error rendering ApplicationsTracker:', error)
                   return <div>Error loading Applications Tracker: {String(error)}</div>

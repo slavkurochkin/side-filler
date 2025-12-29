@@ -24,9 +24,10 @@ interface HeaderProps {
   onFocusModeChange: (enabled: boolean) => void
   currentPage: Page
   onPageChange: (page: Page) => void
+  applicationsTrackerControls?: React.ReactNode
 }
 
-export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange, isFocusMode, onFocusModeChange, currentPage, onPageChange }: HeaderProps) {
+export function Header({ resumes, selectedResumeId, selectedResume, onSelectResume, onCreateResume, onDeleteResume, onOpenSettings, template, onTemplateChange, resumeContentRef, viewMode, onViewModeChange, isFocusMode, onFocusModeChange, currentPage, onPageChange, applicationsTrackerControls }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -651,6 +652,12 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
         </div>
       )}
 
+      {currentPage === 'applications-tracker' && applicationsTrackerControls && (
+        <div className="header-right">
+          {applicationsTrackerControls}
+        </div>
+      )}
+
       <style>{`
         .app-header {
           height: 56px;
@@ -675,6 +682,8 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
           flex: 1;
           display: flex;
           justify-content: flex-end;
+          align-items: center;
+          gap: var(--space-md);
           align-items: center;
           gap: 10px;
         }
@@ -1163,6 +1172,190 @@ export function Header({ resumes, selectedResumeId, selectedResume, onSelectResu
 
         .new-resume-btn:hover {
           box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Applications Tracker Controls Styles */
+        .cycle-selector {
+          position: relative;
+        }
+
+        .cycle-selector-btn {
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          padding: 10px 16px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          min-width: 200px;
+          justify-content: space-between;
+        }
+
+        .cycle-selector-btn:hover {
+          background: var(--bg-hover);
+          border-color: var(--border-hover);
+        }
+
+        .cycle-selector-btn svg {
+          transition: transform var(--transition-fast);
+        }
+
+        .cycle-selector-btn svg.open {
+          transform: rotate(180deg);
+        }
+
+        .cycle-dropdown {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          min-width: 320px;
+          max-width: 400px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-lg);
+          z-index: 1000;
+          max-height: 500px;
+          overflow-y: auto;
+        }
+
+        .dropdown-empty {
+          padding: var(--space-lg);
+          text-align: center;
+          color: var(--text-muted);
+        }
+
+        .cycle-item {
+          padding: var(--space-md);
+          border-bottom: 1px solid var(--border-subtle);
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .cycle-item:hover {
+          background: var(--bg-hover);
+        }
+
+        .cycle-item.active {
+          background: var(--accent-glow);
+        }
+
+        .cycle-item-header {
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          margin-bottom: var(--space-xs);
+        }
+
+        .cycle-item-name {
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+
+        .cycle-item-meta {
+          font-size: 0.875rem;
+          color: var(--text-muted);
+          margin-bottom: var(--space-sm);
+        }
+
+        .cycle-item-actions {
+          display: flex;
+          gap: var(--space-sm);
+        }
+
+        .set-active-btn, .delete-cycle-btn {
+          padding: 4px 8px;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
+          border: none;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+
+        .set-active-btn {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .set-active-btn:hover {
+          background: var(--accent-glow);
+          color: var(--accent-primary);
+        }
+
+        .delete-cycle-btn {
+          background: transparent;
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+        }
+
+        .delete-cycle-btn:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--accent-danger);
+        }
+
+        .cycle-dropdown-footer {
+          padding: var(--space-md);
+          border-top: 1px solid var(--border-subtle);
+        }
+
+        .create-cycle-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--space-xs);
+          padding: 10px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          text-align: center;
+        }
+
+        .create-cycle-btn:hover {
+          background: var(--accent-glow);
+          border-color: var(--accent-primary);
+          color: var(--accent-primary);
+        }
+
+        .add-application-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--space-xs);
+          padding: 10px 20px;
+          background: var(--accent-primary);
+          border: none;
+          border-radius: var(--radius-md);
+          color: white;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          text-align: center;
+        }
+
+        .add-application-btn:hover:not(:disabled) {
+          background: var(--accent-secondary);
+        }
+
+        .add-application-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </header>

@@ -1,6 +1,6 @@
 // ApplicationsTracker Component v2.0 - FULL VERSION - NO TEST CODE
 // Last updated: 2025-12-28 18:45:00
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Briefcase, Plus, Edit3, Trash2, Filter, X, Calendar, MapPin, 
@@ -132,7 +132,11 @@ const getEventDateForStatus = (status: Application['status'], app: Application):
 }
 
 // Applications Tracker Component - v2.0
-export function ApplicationsTracker() {
+interface ApplicationsTrackerProps {
+  onControlsReady?: (controls: React.ReactNode) => void
+}
+
+export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProps = {}) {
   const [cycles, setCycles] = useState<JobSearchCycle[]>([])
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null)
   const [applications, setApplications] = useState<Application[]>([])
@@ -150,8 +154,6 @@ export function ApplicationsTracker() {
     applied_date: '',
     interview_date: '',
     interview_type: '',
-    reply_received: null as boolean | null,
-    reply_date: '',
     notes: '',
     job_posting_url: '',
     salary_range: '',
@@ -164,6 +166,8 @@ export function ApplicationsTracker() {
   const [editingField, setEditingField] = useState<{ appId: string; field: string } | null>(null)
   const [editingStatus, setEditingStatus] = useState<string | null>(null)
   const [expandedTimeline, setExpandedTimeline] = useState<Set<string>>(new Set())
+  const [isCurrentlyInterviewingExpanded, setIsCurrentlyInterviewingExpanded] = useState(true)
+  const [isStatsExpanded, setIsStatsExpanded] = useState(false)
   const [editingEvent, setEditingEvent] = useState<{ appId: string; eventId: string | null } | null>(null)
   const [eventForm, setEventForm] = useState({
     event_type: 'applied' as ApplicationEvent['event_type'],
@@ -414,8 +418,6 @@ export function ApplicationsTracker() {
         applied_date: applicationForm.applied_date || null,
         interview_date: applicationForm.interview_date || null,
         interview_type: applicationForm.interview_type || null,
-        reply_received: null, // Start as waiting for reply
-        reply_date: null
       }
 
       const response = await fetch(url, {
@@ -436,8 +438,6 @@ export function ApplicationsTracker() {
           applied_date: '',
           interview_date: '',
           interview_type: '',
-          reply_received: null,
-          reply_date: '',
           notes: '',
           job_posting_url: '',
           salary_range: '',
@@ -460,8 +460,6 @@ export function ApplicationsTracker() {
       applied_date: app.applied_date || '',
       interview_date: app.interview_date || '',
       interview_type: app.interview_type || '',
-      reply_received: app.reply_received,
-      reply_date: app.reply_date || '',
       notes: app.notes || '',
       job_posting_url: app.job_posting_url || '',
       salary_range: app.salary_range || '',
@@ -471,24 +469,6 @@ export function ApplicationsTracker() {
     setShowApplicationModal(true)
   }
 
-  const handleToggleReplyReceived = async (app: Application, newState: boolean | null) => {
-    const replyDate = newState === true ? new Date().toISOString().split('T')[0] : null
-
-    try {
-      await fetch(`${API_URL}/applications/${app.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reply_received: newState,
-          reply_date: replyDate
-        })
-      })
-      await fetchApplications()
-      await fetchStats()
-    } catch (error) {
-      console.error('Failed to update reply status:', error)
-    }
-  }
 
   const handleStartEdit = (app: Application, field: string) => {
     let value = ''
@@ -809,6 +789,127 @@ export function ApplicationsTracker() {
   const filteredApplications = statusFilter
     ? applications.filter(app => app.status === statusFilter)
     : applications
+  
+  // Filter applications where the last event in timeline is an interview
+  // Events are already sorted by: event_date ASC, sort_order ASC, created_at ASC
+  const currentlyInterviewing = applications.filter(app => {
+    if (!app.events || app.events.length === 0) return false
+    // Get the last event (most recent in timeline)
+    const lastEvent = app.events[app.events.length - 1]
+    return lastEvent.event_type === 'interview'
+  })
+
+  // Extract controls for Header
+  const headerControls = (
+    <>
+      <div className="cycle-selector" ref={cycleDropdownRef}>
+        <button
+          className="cycle-selector-btn"
+          onClick={() => setIsCycleDropdownOpen(!isCycleDropdownOpen)}
+        >
+          <span>{selectedCycle ? selectedCycle.name : 'Select Cycle'}</span>
+          {selectedCycle?.is_active && <span className="active-badge">Active</span>}
+          <ChevronDown size={16} className={isCycleDropdownOpen ? 'open' : ''} />
+        </button>
+        {isCycleDropdownOpen && (
+          <div className="cycle-dropdown">
+            {cycles.length === 0 ? (
+              <div className="dropdown-empty">No cycles found</div>
+            ) : (
+              cycles.map(cycle => (
+                <div
+                  key={cycle.id}
+                  className={`cycle-item ${selectedCycleId === cycle.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedCycleId(cycle.id)
+                    setIsCycleDropdownOpen(false)
+                  }}
+                >
+                  <div className="cycle-item-header">
+                    <span className="cycle-item-name">{cycle.name}</span>
+                    {cycle.is_active && <span className="active-badge">Active</span>}
+                  </div>
+                  <div className="cycle-item-meta">
+                    <span>{new Date(cycle.start_date).toLocaleDateString()}</span>
+                    {cycle.end_date && <span> - {new Date(cycle.end_date).toLocaleDateString()}</span>}
+                    <span> • {cycle.application_count || 0} applications</span>
+                  </div>
+                  <div className="cycle-item-actions">
+                    {!cycle.is_active && (
+                      <button
+                        className="set-active-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSetActiveCycle(cycle.id)
+                          setIsCycleDropdownOpen(false)
+                        }}
+                      >
+                        Set Active
+                      </button>
+                    )}
+                    <button
+                      className="delete-cycle-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteCycle(cycle.id)
+                        setIsCycleDropdownOpen(false)
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+            <div className="cycle-dropdown-footer">
+              <button
+                className="create-cycle-btn"
+                onClick={() => {
+                  setIsCycleDropdownOpen(false)
+                  setShowCycleModal(true)
+                }}
+              >
+                <Plus size={16} />
+                Create New Cycle
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <button
+        className="add-application-btn"
+        onClick={() => {
+          setEditingApplication(null)
+          setApplicationForm({
+            company_name: '',
+            job_title: '',
+            status: 'applied',
+            applied_date: '',
+            interview_date: '',
+            interview_type: '',
+            notes: '',
+            job_posting_url: '',
+            salary_range: '',
+            location: '',
+            job_description_id: ''
+          })
+          setShowApplicationModal(true)
+        }}
+        disabled={!selectedCycleId}
+      >
+        <Plus size={18} />
+        Add Application
+      </button>
+    </>
+  )
+
+  // Expose controls to Header via callback
+  useEffect(() => {
+    if (onControlsReady) {
+      onControlsReady(headerControls)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onControlsReady, cycles, selectedCycleId, selectedCycle?.id, selectedCycle?.is_active, isCycleDropdownOpen])
 
   if (isLoading) {
     return (
@@ -829,115 +930,6 @@ export function ApplicationsTracker() {
 
   return (
     <div className="applications-tracker">
-      <div className="tracker-header">
-        <div className="header-content">
-          <Briefcase size={24} />
-          <h1>Applications Tracker</h1>
-        </div>
-        <div className="header-actions">
-          <div className="cycle-selector" ref={cycleDropdownRef}>
-            <button
-              className="cycle-selector-btn"
-              onClick={() => setIsCycleDropdownOpen(!isCycleDropdownOpen)}
-            >
-              <span>{selectedCycle ? selectedCycle.name : 'Select Cycle'}</span>
-              {selectedCycle?.is_active && <span className="active-badge">Active</span>}
-              <ChevronDown size={16} className={isCycleDropdownOpen ? 'open' : ''} />
-            </button>
-            {isCycleDropdownOpen && (
-              <div className="cycle-dropdown">
-                {cycles.length === 0 ? (
-                  <div className="dropdown-empty">No cycles found</div>
-                ) : (
-                  cycles.map(cycle => (
-                    <div
-                      key={cycle.id}
-                      className={`cycle-item ${selectedCycleId === cycle.id ? 'active' : ''}`}
-                      onClick={() => {
-                        setSelectedCycleId(cycle.id)
-                        setIsCycleDropdownOpen(false)
-                      }}
-                    >
-                      <div className="cycle-item-header">
-                        <span className="cycle-item-name">{cycle.name}</span>
-                        {cycle.is_active && <span className="active-badge">Active</span>}
-                      </div>
-                      <div className="cycle-item-meta">
-                        <span>{new Date(cycle.start_date).toLocaleDateString()}</span>
-                        {cycle.end_date && <span> - {new Date(cycle.end_date).toLocaleDateString()}</span>}
-                        <span> • {cycle.application_count || 0} applications</span>
-                      </div>
-                      <div className="cycle-item-actions">
-                        {!cycle.is_active && (
-                          <button
-                            className="set-active-btn"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleSetActiveCycle(cycle.id)
-                              setIsCycleDropdownOpen(false)
-                            }}
-                          >
-                            Set Active
-                          </button>
-                        )}
-                        <button
-                          className="delete-cycle-btn"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteCycle(cycle.id)
-                            setIsCycleDropdownOpen(false)
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-                <div className="cycle-dropdown-footer">
-                  <button
-                    className="create-cycle-btn"
-                    onClick={() => {
-                      setIsCycleDropdownOpen(false)
-                      setShowCycleModal(true)
-                    }}
-                  >
-                    <Plus size={16} />
-                    Create New Cycle
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <button
-            className="add-application-btn"
-            onClick={() => {
-              setEditingApplication(null)
-              setApplicationForm({
-                company_name: '',
-                job_title: '',
-                status: 'applied',
-                applied_date: '',
-                interview_date: '',
-                interview_type: '',
-                reply_received: null, // Start as waiting
-                reply_date: '',
-                notes: '',
-                job_posting_url: '',
-                salary_range: '',
-                location: '',
-                job_description_id: ''
-              })
-              setShowApplicationModal(true)
-            }}
-            disabled={!selectedCycleId}
-          >
-            <Plus size={18} />
-            Add Application
-          </button>
-        </div>
-      </div>
-
       {!selectedCycleId ? (
         <div className="empty-state">
           <Briefcase size={64} strokeWidth={1.5} />
@@ -954,77 +946,161 @@ export function ApplicationsTracker() {
       ) : (
         <>
           {stats && (
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-value">{stats.total_applications}</div>
-                <div className="stat-label">Total Applications</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.applied_count}</div>
-                <div className="stat-label">Applied</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.interviewing_count}</div>
-                <div className="stat-label">Interviewing</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.offer_count}</div>
-                <div className="stat-label">Offers</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.rejected_count}</div>
-                <div className="stat-label">Rejected</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.accepted_count}</div>
-                <div className="stat-label">Accepted</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.replied_count || 0}</div>
-                <div className="stat-label">Replies</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.no_reply_count || 0}</div>
-                <div className="stat-label">No Reply</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{stats.waiting_reply_count || 0}</div>
-                <div className="stat-label">Waiting</div>
-              </div>
+            <div className="stats-section">
+              <button
+                className="stats-toggle"
+                onClick={() => setIsStatsExpanded(!isStatsExpanded)}
+              >
+                <TrendingUp size={18} />
+                <h3>Statistics</h3>
+                <ChevronDown 
+                  size={18} 
+                  className={isStatsExpanded ? 'open' : ''} 
+                />
+              </button>
+              {isStatsExpanded && (
+                <div className="stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-value">{stats.total_applications}</div>
+                    <div className="stat-label">Total Applications</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{stats.applied_count}</div>
+                    <div className="stat-label">Applied</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{stats.offer_count}</div>
+                    <div className="stat-label">Offers</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{stats.rejected_count}</div>
+                    <div className="stat-label">Rejected</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{stats.accepted_count}</div>
+                    <div className="stat-label">Accepted</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="filters-bar">
-            <div className="status-filters">
-              <Filter size={16} />
+          {/* Currently Interviewing Section */}
+          {currentlyInterviewing.length > 0 && (
+            <div className="currently-interviewing-section">
               <button
-                className={`filter-btn ${!statusFilter ? 'active' : ''}`}
-                onClick={() => setStatusFilter(null)}
+                className="currently-interviewing-toggle"
+                onClick={() => setIsCurrentlyInterviewingExpanded(!isCurrentlyInterviewingExpanded)}
               >
-                All
+                <User size={18} />
+                <h3>Currently Interviewing ({currentlyInterviewing.length})</h3>
+                <ChevronDown 
+                  size={18} 
+                  className={isCurrentlyInterviewingExpanded ? 'open' : ''} 
+                />
               </button>
-              {Object.keys(STATUS_COLORS).map(status => (
+              {isCurrentlyInterviewingExpanded && (
+                <div className="currently-interviewing-list">
+                {currentlyInterviewing.map(app => {
+                  const lastEventStatus = getStatusFromLastEvent(app.events)
+                  const displayStatus = lastEventStatus || app.status
+                  const statusColor = STATUS_COLORS[displayStatus] || STATUS_COLORS.applied
+                  // Get the most recent interview event (last one in timeline order)
+                  // Timeline sorts by: event_date ASC, sort_order ASC, created_at ASC
+                  const interviewEvents = app.events?.filter(e => e.event_type === 'interview') || []
+                  const latestInterview = interviewEvents.length > 0 
+                    ? interviewEvents.sort((a, b) => {
+                        // First sort by event_date (ascending)
+                        const dateDiff = new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
+                        if (dateDiff !== 0) return dateDiff
+                        // Then by sort_order (ascending)
+                        const orderDiff = (a.sort_order || 0) - (b.sort_order || 0)
+                        if (orderDiff !== 0) return orderDiff
+                        // Finally by created_at (ascending)
+                        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                      })[interviewEvents.length - 1] // Get the last one (most recent in timeline)
+                    : null
+                  
+                  return (
+                    <motion.div
+                      key={app.id}
+                      className="currently-interviewing-card"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2 }}
+                      onClick={() => {
+                        // Scroll to the application in the main list
+                        const element = document.querySelector(`[data-application-id="${app.id}"]`)
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          // Highlight it briefly
+                          element.classList.add('highlight')
+                          setTimeout(() => element.classList.remove('highlight'), 2000)
+                        }
+                      }}
+                    >
+                      <div className="interviewing-card-content">
+                        <div className="interviewing-card-main">
+                          <h4 className="interviewing-company">{app.company_name}</h4>
+                          <p className="interviewing-title">{app.job_title}</p>
+                        </div>
+                        {latestInterview && (
+                          <div className="interviewing-card-meta">
+                            <div className="interviewing-date">
+                              <Calendar size={12} />
+                              <span>{new Date(latestInterview.event_date).toLocaleDateString()}</span>
+                            </div>
+                            {latestInterview.interview_type && (
+                              <div className="interviewing-type">
+                                <span className="interview-type-badge">
+                                  {INTERVIEW_TYPES.find(t => t.value === latestInterview.interview_type)?.label || latestInterview.interview_type}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )
+                })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedCycleId && (
+            <div className="filters-bar">
+              <div className="status-filters">
+                <Filter size={16} />
                 <button
-                  key={status}
-                  className={`filter-btn ${statusFilter === status ? 'active' : ''}`}
-                  onClick={() => setStatusFilter(statusFilter === status ? null : status)}
-                  style={{
-                    backgroundColor: statusFilter === status ? STATUS_COLORS[status].bg : 'transparent',
-                    color: statusFilter === status ? STATUS_COLORS[status].text : 'var(--text-secondary)',
-                    borderColor: statusFilter === status ? STATUS_COLORS[status].border : 'var(--border-default)'
-                  }}
+                  className={`filter-btn ${!statusFilter ? 'active' : ''}`}
+                  onClick={() => setStatusFilter(null)}
                 >
-                  {status
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ')}
+                  All
                 </button>
-              ))}
+                {Object.keys(STATUS_COLORS).map(status => (
+                  <button
+                    key={status}
+                    className={`filter-btn ${statusFilter === status ? 'active' : ''}`}
+                    onClick={() => setStatusFilter(statusFilter === status ? null : status)}
+                    style={{
+                      backgroundColor: statusFilter === status ? STATUS_COLORS[status].bg : 'transparent',
+                      color: statusFilter === status ? STATUS_COLORS[status].text : 'var(--text-secondary)',
+                      borderColor: statusFilter === status ? STATUS_COLORS[status].border : 'var(--border-default)'
+                    }}
+                  >
+                    {status
+                      .split('_')
+                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ')}
+                  </button>
+                ))}
+              </div>
+              <div className="applications-count">
+                {filteredApplications.length} {filteredApplications.length === 1 ? 'application' : 'applications'}
+              </div>
             </div>
-            <div className="applications-count">
-              {filteredApplications.length} {filteredApplications.length === 1 ? 'application' : 'applications'}
-            </div>
-          </div>
+          )}
 
           <div className="applications-list">
             {filteredApplications.length === 0 ? (
@@ -1050,6 +1126,7 @@ export function ApplicationsTracker() {
                   <motion.div
                     key={app.id}
                     className="application-card"
+                    data-application-id={app.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2 }}
@@ -1195,21 +1272,21 @@ export function ApplicationsTracker() {
                           onClick={() => handleEditApplication(app)}
                           title="Edit"
                         >
-                          <Edit3 size={16} />
+                          <Edit3 size={14} />
                         </button>
                         <button
                           className="action-btn delete-btn"
                           onClick={() => handleDeleteApplication(app.id)}
                           title="Delete"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </div>
 
                     <div className="application-details">
                       <div className="detail-item">
-                        <MapPin size={14} />
+                        <MapPin size={12} />
                         {editingField?.appId === app.id && editingField.field === 'location' ? (
                           <input
                             ref={setEditInputRef}
@@ -1244,14 +1321,20 @@ export function ApplicationsTracker() {
                           </span>
                         )}
                       </div>
-                      {app.applied_date && (
-                        <div className="detail-item">
-                          <Calendar size={14} />
-                          <span>Applied: {new Date(app.applied_date).toLocaleDateString()}</span>
-                        </div>
-                      )}
+                      {(() => {
+                        // Get the applied event from timeline
+                        const appliedEvent = app.events?.find(e => e.event_type === 'applied')
+                        const appliedDate = appliedEvent ? appliedEvent.event_date : app.applied_date
+                        
+                        return appliedDate ? (
+                          <div className="detail-item">
+                            <Calendar size={12} />
+                            <span>Applied: {new Date(appliedDate).toLocaleDateString()}</span>
+                          </div>
+                        ) : null
+                      })()}
                       <div className="detail-item">
-                        <Clock size={14} />
+                        <Clock size={12} />
                         {(() => {
                           // Get the last event from timeline (any type)
                           const lastEvent = app.events && app.events.length > 0 
@@ -1296,7 +1379,7 @@ export function ApplicationsTracker() {
                         })()}
                       </div>
                       <div className="detail-item">
-                        <DollarSign size={14} />
+                        <DollarSign size={12} />
                         {editingField?.appId === app.id && editingField.field === 'salary_range' ? (
                           <input
                             ref={setEditInputRef}
@@ -1331,51 +1414,6 @@ export function ApplicationsTracker() {
                           </span>
                         )}
                       </div>
-                      {/* Reply status - three states: null (waiting), true (received), false (no reply) */}
-                      {app.reply_received === true ? (
-                        <div className="detail-item reply-received">
-                          <CheckCircle2 size={14} />
-                          <span>Reply received{app.reply_date ? ` on ${new Date(app.reply_date).toLocaleDateString()}` : ''}</span>
-                          <button
-                            className="toggle-reply-btn"
-                            onClick={() => handleToggleReplyReceived(app, false)}
-                            title="Mark as no reply"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ) : app.reply_received === false ? (
-                        <div className="detail-item no-reply">
-                          <AlertCircle size={14} />
-                          <span>No reply</span>
-                          <button
-                            className="toggle-reply-btn"
-                            onClick={() => handleToggleReplyReceived(app, null)}
-                            title="Reset to waiting"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="reply-actions">
-                          <button
-                            className="mark-reply-btn"
-                            onClick={() => handleToggleReplyReceived(app, true)}
-                            title="Mark reply as received"
-                          >
-                            <CheckCircle2 size={14} />
-                            <span>Reply Received</span>
-                          </button>
-                          <button
-                            className="mark-no-reply-btn"
-                            onClick={() => handleToggleReplyReceived(app, false)}
-                            title="Mark as no reply"
-                          >
-                            <AlertCircle size={14} />
-                            <span>No Reply</span>
-                          </button>
-                        </div>
-                      )}
                     </div>
 
                     {/* Timeline Section */}
@@ -1825,38 +1863,6 @@ export function ApplicationsTracker() {
                   </div>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Reply Status</label>
-                    <select
-                      value={applicationForm.reply_received === null ? 'waiting' : applicationForm.reply_received ? 'received' : 'no_reply'}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        const replyReceived = value === 'waiting' ? null : value === 'received' ? true : false
-                        const replyDate = replyReceived === true ? new Date().toISOString().split('T')[0] : ''
-                        setApplicationForm({ 
-                          ...applicationForm, 
-                          reply_received: replyReceived,
-                          reply_date: replyDate
-                        })
-                      }}
-                    >
-                      <option value="waiting">Waiting for Reply</option>
-                      <option value="received">Reply Received</option>
-                      <option value="no_reply">No Reply</option>
-                    </select>
-                  </div>
-                  {applicationForm.reply_received === true && (
-                    <div className="form-group">
-                      <label>Reply Date</label>
-                      <input
-                        type="date"
-                        value={applicationForm.reply_date}
-                        onChange={(e) => setApplicationForm({ ...applicationForm, reply_date: e.target.value })}
-                      />
-                    </div>
-                  )}
-                </div>
 
                 <div className="form-row">
                   <div className="form-group">
@@ -1937,40 +1943,6 @@ export function ApplicationsTracker() {
           min-height: 0;
         }
 
-        .tracker-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: var(--space-xl);
-          border-bottom: 1px solid var(--border-subtle);
-          background: var(--bg-secondary);
-          flex-shrink: 0;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        .header-content {
-          display: flex;
-          align-items: center;
-          gap: var(--space-md);
-        }
-
-        .header-content svg {
-          color: var(--accent-primary);
-        }
-
-        .header-content h1 {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin: 0;
-        }
-
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: var(--space-md);
-        }
 
         .cycle-selector {
           position: relative;
@@ -2218,13 +2190,60 @@ export function ApplicationsTracker() {
           transform: translateY(-1px);
         }
 
+        .stats-section {
+          margin: var(--space-md) var(--space-xl);
+          padding: var(--space-md) var(--space-lg);
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-lg);
+        }
+
+        .stats-toggle {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          width: 100%;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          text-align: left;
+          margin-bottom: var(--space-sm);
+        }
+
+        .stats-toggle:hover {
+          opacity: 0.8;
+        }
+
+        .stats-toggle svg:first-child {
+          color: var(--accent-primary);
+          flex-shrink: 0;
+        }
+
+        .stats-toggle h3 {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+          flex: 1;
+        }
+
+        .stats-toggle svg:last-child {
+          margin-left: auto;
+          color: var(--text-muted);
+          transition: transform var(--transition-fast);
+          flex-shrink: 0;
+        }
+
+        .stats-toggle svg:last-child.open {
+          transform: rotate(180deg);
+        }
+
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
           gap: var(--space-md);
-          padding: var(--space-xl);
-          background: var(--bg-secondary);
-          border-bottom: 1px solid var(--border-subtle);
+          padding-top: var(--space-sm);
         }
 
         .stat-card {
@@ -2248,6 +2267,147 @@ export function ApplicationsTracker() {
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
+
+        .currently-interviewing-section {
+          margin: var(--space-md) var(--space-xl);
+          padding: var(--space-md) var(--space-lg);
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-lg);
+        }
+
+        .currently-interviewing-toggle {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          width: 100%;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          text-align: left;
+          margin-bottom: var(--space-sm);
+        }
+
+        .currently-interviewing-toggle:hover {
+          opacity: 0.8;
+        }
+
+        .currently-interviewing-toggle svg:first-child {
+          color: rgb(245, 158, 11);
+          flex-shrink: 0;
+        }
+
+        .currently-interviewing-toggle h3 {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+          flex: 1;
+        }
+
+        .currently-interviewing-toggle svg:last-child {
+          margin-left: auto;
+          color: var(--text-muted);
+          transition: transform var(--transition-fast);
+          flex-shrink: 0;
+        }
+
+        .currently-interviewing-toggle svg:last-child.open {
+          transform: rotate(180deg);
+        }
+
+        .currently-interviewing-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: var(--space-sm);
+        }
+
+        .currently-interviewing-card {
+          padding: var(--space-sm);
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .currently-interviewing-card:hover {
+          background: var(--bg-hover);
+          border-color: rgb(245, 158, 11);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+        }
+
+        .interviewing-card-content {
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-xs);
+        }
+
+        .interviewing-card-main {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .interviewing-company {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .interviewing-title {
+          font-size: 0.75rem;
+          color: var(--text-secondary);
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .interviewing-card-meta {
+          display: flex;
+          align-items: center;
+          gap: var(--space-sm);
+          flex-wrap: wrap;
+          margin-top: 2px;
+        }
+
+        .interviewing-date {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.7rem;
+          color: var(--text-muted);
+        }
+
+        .interviewing-date svg {
+          color: var(--text-muted);
+          width: 10px;
+          height: 10px;
+        }
+
+        .interviewing-type {
+          display: flex;
+          align-items: center;
+        }
+
+        .application-card.highlight {
+          animation: highlight-pulse 2s ease-in-out;
+        }
+
+        @keyframes highlight-pulse {
+          0%, 100% { 
+            background: var(--bg-tertiary);
+            border-color: var(--border-default);
+          }
+          50% { 
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgb(245, 158, 11);
+          }
+        }
+
 
         .filters-bar {
           display: flex;
@@ -2303,10 +2463,10 @@ export function ApplicationsTracker() {
         .applications-list {
           flex: 1;
           overflow-y: auto;
-          padding: var(--space-xl);
+          padding: var(--space-md) var(--space-lg);
           display: flex;
           flex-direction: column;
-          gap: var(--space-md);
+          gap: var(--space-sm);
         }
 
         .empty-applications {
@@ -2360,8 +2520,8 @@ export function ApplicationsTracker() {
         .application-card {
           background: var(--bg-elevated);
           border: 1px solid var(--border-subtle);
-          border-radius: var(--radius-lg);
-          padding: var(--space-lg);
+          border-radius: var(--radius-md);
+          padding: var(--space-md);
           transition: all var(--transition-fast);
           overflow: visible;
           position: relative;
@@ -2376,7 +2536,7 @@ export function ApplicationsTracker() {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          margin-bottom: var(--space-md);
+          margin-bottom: var(--space-sm);
         }
 
         .application-title-section {
@@ -2385,10 +2545,10 @@ export function ApplicationsTracker() {
         }
 
         .company-name {
-          font-size: 1.125rem;
+          font-size: 1rem;
           font-weight: 600;
           color: var(--text-primary);
-          margin: 0 0 var(--space-xs) 0;
+          margin: 0 0 2px 0;
         }
 
         .company-name.editable {
@@ -2404,7 +2564,7 @@ export function ApplicationsTracker() {
         }
 
         .job-title {
-          font-size: 0.875rem;
+          font-size: 0.8rem;
           font-weight: 500;
           color: var(--text-secondary);
           margin: 0;
@@ -2425,13 +2585,13 @@ export function ApplicationsTracker() {
         .application-actions {
           display: flex;
           align-items: center;
-          gap: var(--space-sm);
+          gap: var(--space-xs);
         }
 
         .status-badge {
-          padding: 8px 16px;
-          border-radius: var(--radius-md);
-          font-size: 0.875rem;
+          padding: 4px 10px;
+          border-radius: var(--radius-sm);
+          font-size: 0.75rem;
           font-weight: 600;
           border: 1px solid;
           cursor: pointer;
@@ -2475,7 +2635,7 @@ export function ApplicationsTracker() {
         }
 
         .action-btn {
-          padding: 6px;
+          padding: 4px;
           border-radius: var(--radius-sm);
           border: none;
           background: transparent;
@@ -2500,15 +2660,15 @@ export function ApplicationsTracker() {
         .application-details {
           display: flex;
           flex-wrap: wrap;
-          gap: var(--space-md);
-          margin-bottom: var(--space-md);
+          gap: var(--space-sm);
+          margin-bottom: var(--space-sm);
         }
 
         .detail-item {
           display: flex;
           align-items: center;
-          gap: var(--space-xs);
-          font-size: 0.875rem;
+          gap: 4px;
+          font-size: 0.8rem;
           color: var(--text-secondary);
         }
 
@@ -2622,114 +2782,14 @@ export function ApplicationsTracker() {
           padding: 2px 6px;
         }
 
-        .detail-item.reply-received {
-          background: rgba(34, 197, 94, 0.1);
-          padding: 6px 10px;
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(34, 197, 94, 0.3);
-          position: relative;
-        }
-
         .detail-item svg {
           color: var(--text-muted);
         }
 
-        .detail-item.reply-received svg {
-          color: rgb(34, 197, 94);
-        }
-
-        .detail-item.no-reply {
-          background: rgba(239, 68, 68, 0.1);
-          padding: 6px 10px;
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          position: relative;
-        }
-
-        .detail-item.no-reply svg {
-          color: rgb(239, 68, 68);
-        }
-
-        .reply-actions {
-          display: flex;
-          gap: var(--space-xs);
-        }
-
-        .mark-reply-btn {
-          display: flex;
-          align-items: center;
-          gap: var(--space-xs);
-          padding: 6px 12px;
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-default);
-          border-radius: var(--radius-md);
-          color: var(--text-secondary);
-          font-size: 0.875rem;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-        }
-
-        .mark-reply-btn:hover {
-          background: rgba(34, 197, 94, 0.1);
-          border-color: rgba(34, 197, 94, 0.3);
-          color: rgb(34, 197, 94);
-        }
-
-        .mark-no-reply-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: var(--space-xs);
-          padding: 6px 12px;
-          background: var(--bg-tertiary);
-          border: 1px solid var(--border-default);
-          border-radius: var(--radius-md);
-          color: var(--text-secondary);
-          font-size: 0.875rem;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-          text-align: center;
-        }
-
-        .mark-no-reply-btn:hover {
-          background: rgba(239, 68, 68, 0.1);
-          border-color: rgba(239, 68, 68, 0.3);
-          color: rgb(239, 68, 68);
-        }
-
-        .mark-reply-btn svg {
-          color: inherit;
-        }
-
-        .toggle-reply-btn {
-          margin-left: var(--space-xs);
-          padding: 2px 4px;
-          border-radius: var(--radius-sm);
-          border: none;
-          background: transparent;
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          opacity: 0.6;
-          transition: all var(--transition-fast);
-        }
-
-        .detail-item.reply-received:hover .toggle-reply-btn,
-        .detail-item.no-reply:hover .toggle-reply-btn {
-          opacity: 1;
-        }
-
-        .toggle-reply-btn:hover {
-          background: rgba(239, 68, 68, 0.15);
-          color: var(--accent-danger);
-        }
-
         .timeline-section {
-          margin-top: var(--space-md);
+          margin-top: var(--space-sm);
           border-top: 1px solid var(--border-subtle);
-          padding-top: var(--space-md);
+          padding-top: var(--space-sm);
         }
 
         .timeline-toggle {
@@ -2737,7 +2797,7 @@ export function ApplicationsTracker() {
           align-items: center;
           gap: var(--space-xs);
           width: 100%;
-          padding: var(--space-sm);
+          padding: var(--space-xs) var(--space-sm);
           background: transparent;
           border: none;
           border-radius: var(--radius-md);
@@ -3449,15 +3509,6 @@ export function ApplicationsTracker() {
             grid-template-columns: 1fr;
           }
 
-          .tracker-header {
-            flex-direction: column;
-            align-items: stretch;
-            gap: var(--space-md);
-          }
-
-          .header-actions {
-            width: 100%;
-          }
 
           .cycle-selector-btn {
             min-width: auto;

@@ -290,8 +290,6 @@ async function ensureApplicationsTrackerTables() {
           status VARCHAR(50) DEFAULT 'applied',
           applied_date DATE,
           interview_date DATE,
-          reply_received BOOLEAN, -- NULL = waiting, FALSE = no reply, TRUE = reply received
-          reply_date DATE,
           notes TEXT,
           job_posting_url TEXT,
           salary_range VARCHAR(100),
@@ -360,30 +358,6 @@ async function ensureApplicationsTrackerTables() {
     } else {
       console.log('✅ Applications tracker tables already exist');
       
-      // Migration: Update reply_received to allow NULL (three states: null=waiting, false=no reply, true=reply received)
-      try {
-        await pool.query(`
-          DO $$ 
-          BEGIN
-            IF EXISTS (
-              SELECT 1 FROM information_schema.columns 
-              WHERE table_name = 'applications' 
-              AND column_name = 'reply_received'
-            ) THEN
-              -- Allow NULL values for reply_received
-              ALTER TABLE applications 
-              ALTER COLUMN reply_received DROP NOT NULL;
-              
-              -- Set existing FALSE to NULL if we want to preserve "waiting" state
-              -- For now, we'll keep existing FALSE as FALSE (confirmed no reply)
-              RAISE NOTICE 'Updated reply_received column to allow NULL';
-            END IF;
-          END $$;
-        `);
-        console.log('✅ Verified reply_received column allows NULL');
-      } catch (error) {
-        console.error('⚠️ Error checking reply_received column:', error);
-      }
     }
   } catch (error) {
     console.error('❌ Error ensuring applications tracker tables:', error);
