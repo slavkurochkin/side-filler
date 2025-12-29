@@ -294,6 +294,7 @@ router.post('/', async (req: Request, res: Response) => {
       status,
       applied_date,
       interview_date,
+      interview_type,
       notes,
       job_posting_url,
       salary_range,
@@ -339,9 +340,14 @@ router.post('/', async (req: Request, res: Response) => {
     );
     
     res.status(201).json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating application:', error);
-    res.status(500).json({ error: 'Failed to create application' });
+    const errorMessage = error.message || 'Failed to create application';
+    console.error('Error details:', errorMessage);
+    res.status(500).json({ 
+      error: 'Failed to create application',
+      details: errorMessage 
+    });
   }
 });
 

@@ -161,6 +161,10 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     job_description_id: ''
   })
   const [jobDescriptions, setJobDescriptions] = useState<Array<{ id: string; title: string | null }>>([])
+  const [isCreatingNewJobDescription, setIsCreatingNewJobDescription] = useState(false)
+  const [newJobDescriptionContent, setNewJobDescriptionContent] = useState('')
+  const [newJobDescriptionTitle, setNewJobDescriptionTitle] = useState('')
+  const [isSavingJobDescription, setIsSavingJobDescription] = useState(false)
   const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false)
   const cycleDropdownRef = useRef<HTMLDivElement>(null)
   const [editingField, setEditingField] = useState<{ appId: string; field: string } | null>(null)
@@ -259,6 +263,53 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     } catch (error) {
       console.error('Failed to fetch job descriptions:', error)
     }
+  }
+
+  const handleSaveNewJobDescription = async () => {
+    if (!newJobDescriptionContent.trim()) {
+      alert('Job description content is required')
+      return
+    }
+
+    try {
+      setIsSavingJobDescription(true)
+      const url = applicationForm.job_posting_url || ''
+      const response = await fetch(`${API_URL}/job-descriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newJobDescriptionContent,
+          title: newJobDescriptionTitle.trim() || null,
+          job_posting_url: url.trim() || null
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Refresh job descriptions list
+        await fetchJobDescriptions()
+        // Select the newly created job description
+        setApplicationForm({ ...applicationForm, job_description_id: data.id })
+        // Reset new job description state
+        setIsCreatingNewJobDescription(false)
+        setNewJobDescriptionContent('')
+        setNewJobDescriptionTitle('')
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to save job description' }))
+        alert(`Failed to save job description: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Failed to save job description:', error)
+      alert('Failed to save job description')
+    } finally {
+      setIsSavingJobDescription(false)
+    }
+  }
+
+  const handleCancelNewJobDescription = () => {
+    setIsCreatingNewJobDescription(false)
+    setNewJobDescriptionContent('')
+    setNewJobDescriptionTitle('')
   }
 
   const fetchApplications = async () => {
@@ -444,6 +495,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           location: '',
           job_description_id: ''
         })
+        setIsCreatingNewJobDescription(false)
+        setNewJobDescriptionContent('')
+        setNewJobDescriptionTitle('')
       }
     } catch (error) {
       console.error('Failed to save application:', error)
@@ -466,6 +520,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
       location: app.location || '',
       job_description_id: app.job_description_id || ''
     })
+    setIsCreatingNewJobDescription(false)
+    setNewJobDescriptionContent('')
+    setNewJobDescriptionTitle('')
     setShowApplicationModal(true)
   }
 
@@ -1369,11 +1426,6 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                                   {' '}({INTERVIEW_TYPES.find(t => t.value === lastEvent.interview_type)?.label || lastEvent.interview_type})
                                 </span>
                               )}
-                              {lastEvent.result && (
-                                <span className={`interview-result-badge ${lastEvent.result}`}>
-                                  {' '}{lastEvent.result === 'pass' ? '✓' : '✗'}
-                                </span>
-                              )}
                             </span>
                           )
                         })()}
@@ -1552,11 +1604,6 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                                             {event.interview_type && (
                                               <span className="timeline-interview-type">
                                                 {' '}({INTERVIEW_TYPES.find(t => t.value === event.interview_type)?.label || event.interview_type})
-                                              </span>
-                                            )}
-                                            {event.result && (
-                                              <span className={`timeline-result-badge ${event.result}`}>
-                                                {event.result === 'pass' ? '✓ Pass' : '✗ Fail'}
                                               </span>
                                             )}
                                           </div>
@@ -1756,6 +1803,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
             onClick={() => {
               setShowApplicationModal(false)
               setEditingApplication(null)
+              setIsCreatingNewJobDescription(false)
+              setNewJobDescriptionContent('')
+              setNewJobDescriptionTitle('')
             }}
           >
             <motion.div
@@ -1772,6 +1822,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                   onClick={() => {
                     setShowApplicationModal(false)
                     setEditingApplication(null)
+                    setIsCreatingNewJobDescription(false)
+                    setNewJobDescriptionContent('')
+                    setNewJobDescriptionTitle('')
                   }}
                 >
                   <X size={20} />
@@ -1887,15 +1940,127 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
 
                 <div className="form-group">
                   <label>Job Description</label>
-                  <select
-                    value={applicationForm.job_description_id}
-                    onChange={(e) => setApplicationForm({ ...applicationForm, job_description_id: e.target.value })}
-                  >
-                    <option value="">None</option>
-                    {jobDescriptions.map(jd => (
-                      <option key={jd.id} value={jd.id}>{jd.title}</option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <select
+                      value={applicationForm.job_description_id}
+                      onChange={(e) => {
+                        if (e.target.value === '__new__') {
+                          setIsCreatingNewJobDescription(true)
+                          setApplicationForm({ ...applicationForm, job_description_id: '' })
+                        } else {
+                          setApplicationForm({ ...applicationForm, job_description_id: e.target.value })
+                          setIsCreatingNewJobDescription(false)
+                        }
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="">None</option>
+                      {jobDescriptions.map(jd => (
+                        <option key={jd.id} value={jd.id}>{jd.title}</option>
+                      ))}
+                      <option value="__new__">+ Create New</option>
+                    </select>
+                  </div>
+                  {isCreatingNewJobDescription && (
+                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                          Title (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={newJobDescriptionTitle}
+                          onChange={(e) => setNewJobDescriptionTitle(e.target.value)}
+                          placeholder="Enter a title for this job description"
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.875rem'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                          Job Description Content
+                        </label>
+                        <textarea
+                          value={newJobDescriptionContent}
+                          onChange={(e) => setNewJobDescriptionContent(e.target.value)}
+                          placeholder="Paste or type the job description here..."
+                          rows={8}
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.875rem',
+                            fontFamily: 'inherit',
+                            resize: 'vertical'
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={handleCancelNewJobDescription}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-default)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            transition: 'all var(--transition-fast)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)'
+                            e.currentTarget.style.color = 'var(--text-primary)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-tertiary)'
+                            e.currentTarget.style.color = 'var(--text-secondary)'
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveNewJobDescription}
+                          disabled={!newJobDescriptionContent.trim() || isSavingJobDescription}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'var(--accent-primary)',
+                            border: '1px solid var(--accent-primary)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'white',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                            cursor: isSavingJobDescription || !newJobDescriptionContent.trim() ? 'not-allowed' : 'pointer',
+                            opacity: isSavingJobDescription || !newJobDescriptionContent.trim() ? 0.5 : 1,
+                            transition: 'all var(--transition-fast)'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSavingJobDescription && newJobDescriptionContent.trim()) {
+                              e.currentTarget.style.background = 'var(--accent-secondary)'
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSavingJobDescription && newJobDescriptionContent.trim()) {
+                              e.currentTarget.style.background = 'var(--accent-primary)'
+                            }
+                          }}
+                        >
+                          {isSavingJobDescription ? 'Saving...' : 'Save Job Description'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -1914,6 +2079,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                   onClick={() => {
                     setShowApplicationModal(false)
                     setEditingApplication(null)
+                    setIsCreatingNewJobDescription(false)
+                    setNewJobDescriptionContent('')
+                    setNewJobDescriptionTitle('')
                   }}
                 >
                   Cancel
@@ -2878,6 +3046,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         .timeline-event-connector {
           display: flex;
           align-items: center;
+          justify-content: center;
           width: 100%;
           position: relative;
           margin-bottom: var(--space-xs);
@@ -2890,6 +3059,8 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           height: 2px;
           background: var(--border-subtle);
           z-index: 0;
+          top: 50%;
+          transform: translateY(-50%);
         }
 
         .timeline-event-icon {
@@ -2906,6 +3077,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           z-index: 2;
           position: relative;
           transition: all var(--transition-fast);
+          margin-top: 0;
         }
 
         .timeline-event-icon.icon-pass {
