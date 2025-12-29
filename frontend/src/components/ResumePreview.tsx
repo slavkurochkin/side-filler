@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Mail, Phone, MapPin, Calendar, Globe, Linkedin, Github } from 'lucide-react'
+import { Mail, Phone, MapPin, Calendar, Globe, Linkedin, Github, FileText } from 'lucide-react'
 import { Resume } from '../types'
 import React, { useState, useEffect, useRef } from 'react'
 import { loadThemeColor, loadSkillsDisplayMode, SkillsDisplayMode } from './Settings'
@@ -106,7 +106,7 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
     return (
       <div className="preview-empty">
         <div className="empty-content">
-          <div className="empty-icon">📄</div>
+          <FileText size={48} strokeWidth={1.5} />
           <h3>No Resume Selected</h3>
           <p>Select or create a resume to see the preview</p>
         </div>
@@ -117,19 +117,34 @@ export function ResumePreview({ resume, template, resumeContentRef: externalRef,
             align-items: center;
             justify-content: center;
             background: var(--bg-primary);
+            padding: var(--space-2xl);
           }
           .empty-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-lg);
             text-align: center;
             color: var(--text-muted);
           }
-          .empty-icon {
-            font-size: 4rem;
-            margin-bottom: var(--space-lg);
-            opacity: 0.5;
+          .empty-content svg {
+            opacity: 0.4;
+            color: var(--text-muted);
+            margin-bottom: var(--space-sm);
           }
           .empty-content h3 {
             color: var(--text-secondary);
-            margin-bottom: var(--space-sm);
+            font-weight: 500;
+            font-size: 1.125rem;
+            margin: 0;
+          }
+          .empty-content p {
+            color: var(--text-muted);
+            font-size: 0.9375rem;
+            margin: 0;
+            max-width: 400px;
+            line-height: 1.5;
           }
         `}</style>
       </div>

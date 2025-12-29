@@ -37,10 +37,49 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
 
   if (!resume) {
     return (
-      <div className="empty-state">
-        <FileText size={48} strokeWidth={1.5} />
-        <h3>No Resume Selected</h3>
-        <p>Select or create a resume to get started</p>
+      <div className="resume-panel-empty">
+        <div className="empty-state">
+          <FileText size={48} strokeWidth={1.5} />
+          <h3>No Resume Selected</h3>
+          <p>Select or create a resume to get started</p>
+        </div>
+        <style>{`
+          .resume-panel-empty {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-secondary);
+            padding: var(--space-2xl);
+          }
+          .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-lg);
+            text-align: center;
+            color: var(--text-muted);
+          }
+          .empty-state svg {
+            opacity: 0.4;
+            color: var(--text-muted);
+            margin-bottom: var(--space-sm);
+          }
+          .empty-state h3 {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 1.125rem;
+            margin: 0;
+          }
+          .empty-state p {
+            color: var(--text-muted);
+            font-size: 0.9375rem;
+            margin: 0;
+            max-width: 400px;
+            line-height: 1.5;
+          }
+        `}</style>
       </div>
     )
   }
@@ -634,21 +673,6 @@ export function ResumePanel({ resume, onUpdate, apiUrl, jobDescription }: Resume
           display: flex;
           flex-direction: column;
           overflow: hidden;
-        }
-
-        .empty-state {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: var(--space-md);
-          color: var(--text-muted);
-        }
-
-        .empty-state h3 {
-          color: var(--text-secondary);
-          font-weight: 500;
         }
 
         .resume-header {
