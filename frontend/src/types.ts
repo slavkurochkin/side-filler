@@ -66,7 +66,7 @@ export interface JobSearchCycle {
 export interface ApplicationEvent {
   id: string
   application_id: string
-  event_type: 'applied' | 'recruiter_contacted' | 'interview' | 'offer' | 'rejected' | 'withdrawn' | 'accepted' | 'follow_up' | 'other'
+  event_type: 'interested' | 'applied' | 'recruiter_contacted' | 'interview' | 'offer' | 'rejected' | 'withdrawn' | 'accepted' | 'follow_up' | 'other'
   interview_type?: string
   event_date: string
   notes?: string
@@ -82,7 +82,7 @@ export interface Application {
   job_description_id?: string
   company_name: string
   job_title: string
-  status: 'interested' | 'applied' | 'interviewing' | 'offer' | 'rejected' | 'withdrawn' | 'accepted'
+  status: 'interested' | 'applied' | 'recruiter_contacted' | 'interviewing' | 'follow_up' | 'offer' | 'rejected' | 'withdrawn' | 'accepted' | 'other'
   applied_date?: string
   interview_date?: string
   interview_type?: string

@@ -26,26 +26,109 @@ const INTERVIEW_TYPES = [
   { value: 'other', label: 'Other' }
 ]
 
-const EVENT_TYPES = [
+// Primary event types that map directly to statuses
+const PRIMARY_EVENT_TYPES = [
+  { value: 'interested', label: 'Interested', icon: Briefcase },
   { value: 'applied', label: 'Applied', icon: Briefcase },
-  { value: 'recruiter_contacted', label: 'Recruiter Contacted', icon: MessageSquare },
   { value: 'interview', label: 'Interview', icon: User },
   { value: 'offer', label: 'Offer', icon: CheckCircle2 },
   { value: 'rejected', label: 'Rejected', icon: X },
   { value: 'withdrawn', label: 'Withdrawn', icon: X },
-  { value: 'accepted', label: 'Accepted', icon: CheckCircle2 },
+  { value: 'accepted', label: 'Accepted', icon: CheckCircle2 }
+]
+
+// Secondary event types (intermediate events that don't map to statuses)
+const SECONDARY_EVENT_TYPES = [
+  { value: 'recruiter_contacted', label: 'Recruiter Contacted', icon: MessageSquare },
   { value: 'follow_up', label: 'Follow Up', icon: Clock },
   { value: 'other', label: 'Other', icon: FileText }
 ]
 
+// All event types combined
+const EVENT_TYPES = [...PRIMARY_EVENT_TYPES, ...SECONDARY_EVENT_TYPES]
+
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   interested: { bg: 'rgba(99, 102, 241, 0.1)', text: 'rgb(99, 102, 241)', border: 'rgb(99, 102, 241)' },
   applied: { bg: 'rgba(59, 130, 246, 0.1)', text: 'rgb(59, 130, 246)', border: 'rgb(59, 130, 246)' },
+  recruiter_contacted: { bg: 'rgba(139, 92, 246, 0.1)', text: 'rgb(139, 92, 246)', border: 'rgb(139, 92, 246)' },
   interviewing: { bg: 'rgba(245, 158, 11, 0.1)', text: 'rgb(245, 158, 11)', border: 'rgb(245, 158, 11)' },
+  follow_up: { bg: 'rgba(251, 191, 36, 0.1)', text: 'rgb(251, 191, 36)', border: 'rgb(251, 191, 36)' },
   offer: { bg: 'rgba(34, 197, 94, 0.1)', text: 'rgb(34, 197, 94)', border: 'rgb(34, 197, 94)' },
   rejected: { bg: 'rgba(239, 68, 68, 0.1)', text: 'rgb(239, 68, 68)', border: 'rgb(239, 68, 68)' },
   withdrawn: { bg: 'rgba(107, 114, 128, 0.1)', text: 'rgb(107, 114, 128)', border: 'rgb(107, 114, 128)' },
-  accepted: { bg: 'rgba(16, 185, 129, 0.1)', text: 'rgb(16, 185, 129)', border: 'rgb(16, 185, 129)' }
+  accepted: { bg: 'rgba(16, 185, 129, 0.1)', text: 'rgb(16, 185, 129)', border: 'rgb(16, 185, 129)' },
+  other: { bg: 'rgba(156, 163, 175, 0.1)', text: 'rgb(156, 163, 175)', border: 'rgb(156, 163, 175)' }
+}
+
+// Map event types to application statuses
+// All events now map directly to statuses
+const EVENT_TO_STATUS_MAP: Record<string, Application['status']> = {
+  interested: 'interested',
+  applied: 'applied',
+  recruiter_contacted: 'recruiter_contacted',
+  interview: 'interviewing',
+  follow_up: 'follow_up',
+  offer: 'offer',
+  rejected: 'rejected',
+  withdrawn: 'withdrawn',
+  accepted: 'accepted',
+  other: 'other'
+}
+
+// Map application statuses to event types (for creating missing events)
+const STATUS_TO_EVENT_MAP: Record<Application['status'], string> = {
+  interested: 'interested',
+  applied: 'applied',
+  recruiter_contacted: 'recruiter_contacted',
+  interviewing: 'interview',
+  follow_up: 'follow_up',
+  offer: 'offer',
+  rejected: 'rejected',
+  withdrawn: 'withdrawn',
+  accepted: 'accepted',
+  other: 'other'
+}
+
+// Helper function to get status from last event
+const getStatusFromLastEvent = (events?: ApplicationEvent[]): Application['status'] | null => {
+  if (!events || events.length === 0) return null
+  // Get the last event (events are sorted by date)
+  const lastEvent = events[events.length - 1]
+  return EVENT_TO_STATUS_MAP[lastEvent.event_type] || null
+}
+
+// Helper function to check if status has corresponding event
+const hasEventForStatus = (status: Application['status'], events?: ApplicationEvent[]): boolean => {
+  if (!events || events.length === 0) return false
+  const expectedEventType = STATUS_TO_EVENT_MAP[status]
+  if (!expectedEventType) return true // Status doesn't need an event
+  return events.some(event => event.event_type === expectedEventType)
+}
+
+// Event type priority for ordering (lower number = earlier in timeline)
+const EVENT_PRIORITY: Record<string, number> = {
+  interested: 1,
+  applied: 2,
+  recruiter_contacted: 3,
+  interview: 4,
+  follow_up: 5,
+  offer: 6,
+  rejected: 7,
+  withdrawn: 8,
+  accepted: 9,
+  other: 10
+}
+
+// Helper function to get appropriate date for event based on status
+const getEventDateForStatus = (status: Application['status'], app: Application): string => {
+  // If status is interested, use a date before applied_date
+  if (status === 'interested' && app.applied_date) {
+    const appliedDate = new Date(app.applied_date)
+    appliedDate.setDate(appliedDate.getDate() - 1) // One day before applied date
+    return appliedDate.toISOString().split('T')[0]
+  }
+  // For other statuses, use applied_date or current date
+  return app.applied_date || new Date().toISOString().split('T')[0]
 }
 
 // Applications Tracker Component - v2.0
@@ -183,6 +266,70 @@ export function ApplicationsTracker() {
       const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
+        
+        // Check and create missing events for each application
+        const createPromises: Promise<void>[] = []
+        for (const app of data) {
+          const expectedEventType = STATUS_TO_EVENT_MAP[app.status]
+          if (expectedEventType) {
+            // Check what events are missing - use Set for O(1) lookup
+            const existingEventTypes = new Set((app.events || []).map((e: ApplicationEvent) => e.event_type))
+            const eventsToCreate: Array<{ type: string; date: string; sortOrder: number }> = []
+            
+            // If status is "applied" or later, ensure "interested" exists first (only if it doesn't exist)
+            if ((app.status === 'applied' || app.status === 'interviewing' || app.status === 'offer' || app.status === 'rejected' || app.status === 'accepted')) {
+              const interestedCount = (app.events || []).filter((e: ApplicationEvent) => e.event_type === 'interested').length
+              if (interestedCount === 0) {
+                const interestedDate = app.applied_date 
+                  ? new Date(new Date(app.applied_date).getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                  : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                eventsToCreate.push({ type: 'interested', date: interestedDate, sortOrder: EVENT_PRIORITY.interested })
+              }
+            }
+            
+            // Add the main event for the current status if it doesn't exist
+            const currentEventCount = (app.events || []).filter((e: ApplicationEvent) => e.event_type === expectedEventType).length
+            if (currentEventCount === 0) {
+              const eventDate = getEventDateForStatus(app.status, app)
+              eventsToCreate.push({ type: expectedEventType, date: eventDate, sortOrder: EVENT_PRIORITY[expectedEventType] || 99 })
+            }
+            
+            // Create all missing events (only if we have events to create)
+            if (eventsToCreate.length > 0) {
+              for (const eventData of eventsToCreate) {
+                createPromises.push(
+                  fetch(`${API_URL}/applications/${app.id}/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      event_type: eventData.type,
+                      event_date: eventData.date,
+                      sort_order: eventData.sortOrder,
+                      notes: 'Auto-created from application status'
+                    })
+                  }).then(() => {
+                    console.log(`Created event ${eventData.type} for application ${app.id}`)
+                  }).catch(error => {
+                    console.error(`Failed to create event ${eventData.type} for application ${app.id}:`, error)
+                  })
+                )
+              }
+            }
+          }
+        }
+        
+        // Wait for all events to be created
+        if (createPromises.length > 0) {
+          await Promise.all(createPromises)
+          // Refetch applications to get updated events
+          const refreshResponse = await fetch(url)
+          if (refreshResponse.ok) {
+            const refreshedData = await refreshResponse.json()
+            setApplications(refreshedData)
+            return
+          }
+        }
+        
         setApplications(data)
       }
     } catch (error) {
@@ -432,11 +579,53 @@ export function ApplicationsTracker() {
     }
 
     try {
+      // Update the status
       await fetch(`${API_URL}/applications/${app.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       })
+
+      // Check if we need to create a corresponding event
+      const expectedEventType = STATUS_TO_EVENT_MAP[newStatus]
+      if (expectedEventType) {
+        const existingEventTypes = new Set(app.events?.map(e => e.event_type) || [])
+        const eventsToCreate: Array<{ type: string; date: string; sortOrder: number }> = []
+        
+        // If status is "applied" or later, ensure "interested" exists first
+        if ((newStatus === 'applied' || newStatus === 'interviewing' || newStatus === 'offer' || newStatus === 'rejected' || newStatus === 'accepted') 
+            && !existingEventTypes.has('interested')) {
+          const interestedDate = app.applied_date 
+            ? new Date(new Date(app.applied_date).getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          eventsToCreate.push({ type: 'interested', date: interestedDate, sortOrder: EVENT_PRIORITY.interested })
+        }
+        
+        // Add the main event for the new status if it doesn't exist
+        if (!existingEventTypes.has(expectedEventType)) {
+          const eventDate = getEventDateForStatus(newStatus, app)
+          eventsToCreate.push({ type: expectedEventType, date: eventDate, sortOrder: EVENT_PRIORITY[expectedEventType] || 99 })
+        }
+        
+        // Create all missing events
+        for (const eventData of eventsToCreate) {
+          try {
+            await fetch(`${API_URL}/applications/${app.id}/events`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                event_type: eventData.type,
+                event_date: eventData.date,
+                sort_order: eventData.sortOrder,
+                notes: 'Auto-created from status change'
+              })
+            })
+          } catch (error) {
+            console.error(`Failed to create event ${eventData.type} for status change:`, error)
+          }
+        }
+      }
+
       await fetchApplications()
       await fetchStats()
       setEditingStatus(null)
@@ -515,7 +704,25 @@ export function ApplicationsTracker() {
         body: JSON.stringify(body)
       })
 
+      // Fetch updated events to get the latest
+      const eventsResponse = await fetch(`${API_URL}/applications/${app.id}/events`)
+      let updatedEvents: ApplicationEvent[] = []
+      if (eventsResponse.ok) {
+        updatedEvents = await eventsResponse.json()
+      }
+
+      // Update application status based on last event
+      const newStatus = getStatusFromLastEvent(updatedEvents)
+      if (newStatus && newStatus !== app.status) {
+        await fetch(`${API_URL}/applications/${app.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        })
+      }
+
       await fetchApplications()
+      await fetchStats()
       handleCancelEventEdit()
     } catch (error) {
       console.error('Failed to save event:', error)
@@ -523,17 +730,66 @@ export function ApplicationsTracker() {
     }
   }
 
-  const handleDeleteEvent = async (eventId: string) => {
+  const handleDeleteEvent = async (app: Application, eventId: string) => {
     if (!confirm('Delete this event?')) return
 
     try {
       await fetch(`${API_URL}/applications/events/${eventId}`, {
         method: 'DELETE'
       })
+
+      // Fetch updated events to get the latest
+      const eventsResponse = await fetch(`${API_URL}/applications/${app.id}/events`)
+      let updatedEvents: ApplicationEvent[] = []
+      if (eventsResponse.ok) {
+        updatedEvents = await eventsResponse.json()
+      }
+
+      // Update application status based on last event (or default to 'applied' if no events)
+      const newStatus = getStatusFromLastEvent(updatedEvents) || 'applied'
+      if (newStatus !== app.status) {
+        await fetch(`${API_URL}/applications/${app.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        })
+      }
+
       await fetchApplications()
+      await fetchStats()
     } catch (error) {
       console.error('Failed to delete event:', error)
       alert('Failed to delete event')
+    }
+  }
+
+  const handleClearAllEvents = async (app: Application) => {
+    if (!app.events || app.events.length === 0) return
+    
+    if (!confirm(`Delete all ${app.events.length} events for this application?`)) return
+
+    try {
+      // Delete all events
+      const deletePromises = app.events.map(event => 
+        fetch(`${API_URL}/applications/events/${event.id}`, {
+          method: 'DELETE'
+        })
+      )
+      
+      await Promise.all(deletePromises)
+
+      // Update application status to 'applied' (default when no events)
+      await fetch(`${API_URL}/applications/${app.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'applied' })
+      })
+
+      await fetchApplications()
+      await fetchStats()
+    } catch (error) {
+      console.error('Failed to clear all events:', error)
+      alert('Failed to clear all events')
     }
   }
 
@@ -758,7 +1014,10 @@ export function ApplicationsTracker() {
                     borderColor: statusFilter === status ? STATUS_COLORS[status].border : 'var(--border-default)'
                   }}
                 >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  {status
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ')}
                 </button>
               ))}
             </div>
@@ -783,7 +1042,10 @@ export function ApplicationsTracker() {
               </div>
             ) : (
               filteredApplications.map(app => {
-                const statusColor = STATUS_COLORS[app.status] || STATUS_COLORS.applied
+                // Determine status color - use last event status if available, otherwise use app status
+                const lastEventStatus = getStatusFromLastEvent(app.events)
+                const displayStatus = lastEventStatus || app.status
+                const statusColor = STATUS_COLORS[displayStatus] || STATUS_COLORS.applied
                 return (
                   <motion.div
                     key={app.id}
@@ -866,7 +1128,7 @@ export function ApplicationsTracker() {
                           <select
                             ref={statusSelectRef}
                             className="status-select"
-                            value={app.status}
+                            value={displayStatus}
                             onChange={(e) => {
                               const newStatus = e.target.value as Application['status']
                               const newStatusColor = STATUS_COLORS[newStatus] || STATUS_COLORS.applied
@@ -887,11 +1149,18 @@ export function ApplicationsTracker() {
                             }}
                             autoFocus
                           >
-                            {Object.keys(STATUS_COLORS).map(status => (
-                              <option key={status} value={status}>
-                                {status.charAt(0).toUpperCase() + status.slice(1)}
-                              </option>
-                            ))}
+                            {Object.keys(STATUS_COLORS).map(status => {
+                              // Convert status key to readable label
+                              const statusLabel = status
+                                .split('_')
+                                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                .join(' ')
+                              return (
+                                <option key={status} value={status}>
+                                  {statusLabel}
+                                </option>
+                              )
+                            })}
                           </select>
                         ) : (
                           <span
@@ -910,9 +1179,15 @@ export function ApplicationsTracker() {
                               color: statusColor.text,
                               borderColor: statusColor.border
                             }}
-                            title="Click to change status"
+                            title={lastEventStatus && lastEventStatus !== app.status ? `Status from timeline (last event: ${app.events?.[app.events.length - 1]?.event_type}). Click to override.` : "Click to change status"}
                           >
-                            {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                            {displayStatus
+                              .split('_')
+                              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                              .join(' ')}
+                            {lastEventStatus && lastEventStatus !== app.status && (
+                              <span style={{ fontSize: '0.7rem', opacity: 0.7, marginLeft: '4px' }}>•</span>
+                            )}
                           </span>
                         )}
                         <button
@@ -977,106 +1252,48 @@ export function ApplicationsTracker() {
                       )}
                       <div className="detail-item">
                         <Clock size={14} />
-                        {editingField?.appId === app.id && editingField.field === 'interview_date' ? (
-                          <input
-                            ref={setEditInputRef}
-                            type="date"
-                            className="inline-edit-input detail-input"
-                            defaultValue={initialEditValueRef.current}
-                            onBlur={(e) => {
-                              e.stopPropagation()
-                              handleSaveField(app, 'interview_date')
-                            }}
-                            onKeyDown={(e) => {
-                              e.stopPropagation()
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSaveField(app, 'interview_date')
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                handleCancelEdit()
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => e.stopPropagation()}
-                          />
-                        ) : editingField?.appId === app.id && editingField.field === 'interview_type' ? (
-                          <select
-                            ref={(el) => {
-                              editInputRef.current = el as any
-                              if (el) {
-                                requestAnimationFrame(() => {
-                                  el.focus()
-                                })
-                              }
-                            }}
-                            className="inline-edit-select detail-input"
-                            defaultValue={initialEditValueRef.current}
-                            onBlur={(e) => {
-                              e.stopPropagation()
-                              handleSaveField(app, 'interview_type')
-                            }}
-                            onKeyDown={(e) => {
-                              e.stopPropagation()
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                handleSaveField(app, 'interview_type')
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault()
-                                handleCancelEdit()
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation()
-                              // Update the value immediately for better UX
-                              const newValue = e.target.value
-                              if (editInputRef.current) {
-                                (editInputRef.current as HTMLSelectElement).value = newValue
-                              }
-                            }}
-                            autoFocus
-                          >
-                            <option value="">Select type</option>
-                            {INTERVIEW_TYPES.map(type => (
-                              <option key={type.value} value={type.value}>
-                                {type.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span 
-                            className={app.interview_date ? 'editable' : 'editable add-field'}
-                            onClick={() => handleStartEdit(app, 'interview_date')}
-                            title="Click to edit date"
-                          >
-                            {app.interview_date ? (
-                              <>
-                                Interview: {new Date(app.interview_date).toLocaleDateString()}
-                                {app.interview_type && (
-                                  <span className="interview-type-badge" onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleStartEdit(app, 'interview_type')
-                                  }} title="Click to change type">
-                                    {' '}({INTERVIEW_TYPES.find(t => t.value === app.interview_type)?.label || app.interview_type})
-                                  </span>
-                                )}
-                              </>
-                            ) : 'Add interview date'}
-                          </span>
-                        )}
-                        {!editingField && app.interview_date && !app.interview_type && (
-                          <span 
-                            className="editable add-field interview-type-add"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleStartEdit(app, 'interview_type')
-                            }}
-                            title="Add interview type"
-                          >
-                            + Type
-                          </span>
-                        )}
+                        {(() => {
+                          // Get the last event from timeline (any type)
+                          const lastEvent = app.events && app.events.length > 0 
+                            ? app.events[app.events.length - 1] 
+                            : null
+                          
+                          if (!lastEvent) {
+                            return (
+                              <span 
+                                className="editable add-field"
+                                onClick={() => handleToggleTimeline(app.id)}
+                                title="Click to add event in timeline"
+                              >
+                                Add event in timeline
+                              </span>
+                            )
+                          }
+                          
+                          const eventTypeConfig = EVENT_TYPES.find(t => t.value === lastEvent.event_type)
+                          const eventLabel = eventTypeConfig?.label || lastEvent.event_type
+                          const eventDate = new Date(lastEvent.event_date).toLocaleDateString()
+                          
+                          return (
+                            <span 
+                              className="editable"
+                              onClick={() => handleToggleTimeline(app.id)}
+                              title="Click to view/edit timeline"
+                            >
+                              {eventLabel}: {eventDate}
+                              {lastEvent.interview_type && (
+                                <span className="interview-type-badge">
+                                  {' '}({INTERVIEW_TYPES.find(t => t.value === lastEvent.interview_type)?.label || lastEvent.interview_type})
+                                </span>
+                              )}
+                              {lastEvent.result && (
+                                <span className={`interview-result-badge ${lastEvent.result}`}>
+                                  {' '}{lastEvent.result === 'pass' ? '✓' : '✗'}
+                                </span>
+                              )}
+                            </span>
+                          )
+                        })()}
                       </div>
                       <div className="detail-item">
                         <DollarSign size={14} />
@@ -1323,7 +1540,7 @@ export function ApplicationsTracker() {
                                             </button>
                                             <button
                                               className="action-btn delete-btn"
-                                              onClick={() => handleDeleteEvent(event.id)}
+                                              onClick={() => handleDeleteEvent(app, event.id)}
                                               title="Delete"
                                             >
                                               <Trash2 size={12} />
@@ -1333,19 +1550,47 @@ export function ApplicationsTracker() {
                                       </div>
                                     )
                                   })}
+                                  {/* Add event button at the end of timeline */}
+                                  <div className="timeline-event timeline-add-event">
+                                    <div className="timeline-event-connector">
+                                      <div className="timeline-connector-line"></div>
+                                      <button
+                                        className="timeline-add-event-icon"
+                                        onClick={() => handleAddEvent(app)}
+                                        title="Add new event"
+                                      >
+                                        <Plus size={18} />
+                                      </button>
+                                    </div>
+                                    <div className="timeline-event-content">
+                                      <div className="timeline-add-event-label">Add Event</div>
+                                    </div>
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="timeline-empty">
                                   <p>No events yet. Add events to track your application progress.</p>
                                 </div>
                               )}
-                              <button
-                                className="add-event-btn"
-                                onClick={() => handleAddEvent(app)}
-                              >
-                                <Plus size={14} />
-                                Add Event
-                              </button>
+                              <div className="timeline-actions">
+                                <button
+                                  className="add-event-btn"
+                                  onClick={() => handleAddEvent(app)}
+                                >
+                                  <Plus size={14} />
+                                  Add Event
+                                </button>
+                                {app.events && app.events.length > 0 && (
+                                  <button
+                                    className="clear-all-events-btn"
+                                    onClick={() => handleClearAllEvents(app)}
+                                    title="Delete all events"
+                                  >
+                                    <Trash2 size={14} />
+                                    Clear All Events
+                                  </button>
+                                )}
+                              </div>
                             </>
                           )}
                         </div>
@@ -1525,7 +1770,10 @@ export function ApplicationsTracker() {
                     >
                       {Object.keys(STATUS_COLORS).map(status => (
                         <option key={status} value={status}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                          {status
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ')}
                         </option>
                       ))}
                     </select>
@@ -2349,6 +2597,25 @@ export function ApplicationsTracker() {
           text-decoration: underline;
         }
 
+        .interview-result-badge {
+          display: inline-block;
+          margin-left: 4px;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .interview-result-badge.pass {
+          background: rgba(34, 197, 94, 0.1);
+          color: rgb(34, 197, 94);
+        }
+
+        .interview-result-badge.fail {
+          background: rgba(239, 68, 68, 0.1);
+          color: rgb(239, 68, 68);
+        }
+
         .interview-type-add {
           margin-left: var(--space-xs);
           font-size: 0.75rem;
@@ -2699,16 +2966,114 @@ export function ApplicationsTracker() {
           gap: var(--space-xs);
           margin-top: var(--space-xs);
           opacity: 0;
-          transition: opacity var(--transition-fast);
+          visibility: hidden;
+          transition: opacity var(--transition-fast), visibility var(--transition-fast);
+          position: relative;
+          z-index: 2;
         }
 
         .timeline-event:hover .timeline-event-actions {
           opacity: 1;
+          visibility: visible;
+        }
+
+        .timeline-event-actions:hover {
+          opacity: 1;
+          visibility: visible;
         }
 
         .timeline-event-actions .action-btn {
-          padding: 4px;
+          padding: 6px;
           font-size: 0.75rem;
+          min-width: 28px;
+          min-height: 28px;
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+          position: relative;
+          z-index: 3;
+          flex-shrink: 0;
+        }
+
+        .timeline-event-actions .action-btn:hover {
+          background: var(--bg-hover);
+          transform: scale(1.1);
+        }
+
+        .timeline-event-actions .delete-btn {
+          display: flex;
+          opacity: 1;
+          visibility: visible;
+        }
+
+        .timeline-event-actions .delete-btn:hover {
+          background: rgba(239, 68, 68, 0.15);
+          border-color: rgb(239, 68, 68);
+          color: rgb(239, 68, 68);
+        }
+
+        .timeline-event-actions .edit-btn {
+          display: flex;
+          opacity: 1;
+          visibility: visible;
+        }
+
+        .timeline-event-actions .edit-btn:hover {
+          background: rgba(59, 130, 246, 0.15);
+          border-color: rgb(59, 130, 246);
+          color: rgb(59, 130, 246);
+        }
+
+        .timeline-add-event {
+          opacity: 0.6;
+          transition: opacity var(--transition-fast);
+        }
+
+        .timeline-add-event:hover {
+          opacity: 1;
+        }
+
+        .timeline-add-event-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: var(--bg-tertiary);
+          border: 2px dashed var(--border-default);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
+          flex-shrink: 0;
+          z-index: 2;
+          position: relative;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          padding: 0;
+        }
+
+        .timeline-add-event-icon:hover {
+          background: var(--accent-glow);
+          border-color: var(--accent-primary);
+          border-style: solid;
+          color: var(--accent-primary);
+          transform: scale(1.1);
+        }
+
+        .timeline-add-event-label {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          margin-top: var(--space-xs);
+          text-align: center;
+        }
+
+        .timeline-add-event:hover .timeline-add-event-label {
+          color: var(--accent-primary);
         }
 
         .timeline-empty {
@@ -2718,12 +3083,18 @@ export function ApplicationsTracker() {
           font-size: 0.875rem;
         }
 
+        .timeline-actions {
+          display: flex;
+          gap: var(--space-sm);
+          margin-top: var(--space-md);
+        }
+
         .add-event-btn {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: var(--space-xs);
-          width: 100%;
+          flex: 1;
           padding: var(--space-sm);
           background: var(--bg-tertiary);
           border: 1px dashed var(--border-default);
@@ -2739,6 +3110,28 @@ export function ApplicationsTracker() {
           background: var(--bg-hover);
           border-color: var(--accent-primary);
           color: var(--accent-primary);
+        }
+
+        .clear-all-events-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--space-xs);
+          padding: var(--space-sm) var(--space-md);
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .clear-all-events-btn:hover {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: rgb(239, 68, 68);
+          color: rgb(239, 68, 68);
         }
 
         .event-form {
