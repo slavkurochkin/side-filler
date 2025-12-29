@@ -318,12 +318,8 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         body: JSON.stringify(requestBody)
       })
 
-      console.log('Response status:', response.status, response.statusText)
-      console.log('Response ok:', response.ok)
-
       if (response.ok) {
         const data = await response.json()
-        console.log('Job description saved successfully - response data:', data)
         
         if (!data || !data.id) {
           console.error('ERROR: Response data is missing or invalid:', data)
@@ -339,16 +335,10 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
             : 'New Job Description'),
           label: data.label || null
         }
-        console.log('Adding to state:', newJobDescription)
-        setJobDescriptions(prev => {
-          const updated = [newJobDescription, ...prev]
-          console.log('Updated job descriptions list, count:', updated.length)
-          return updated
-        })
+        setJobDescriptions(prev => [newJobDescription, ...prev])
         
         // Also refresh from server to ensure consistency (with a small delay to ensure DB commit)
         setTimeout(async () => {
-          console.log('Refreshing job descriptions from server...')
           await fetchJobDescriptions()
         }, 100)
         
@@ -2085,13 +2075,6 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                   </div>
                   {isCreatingNewJobDescription && (
                     <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {console.log('Rendering job description form', {
-                        hasContent: !!newJobDescriptionContent.trim(),
-                        contentLength: newJobDescriptionContent.length,
-                        isSaving: isSavingJobDescription,
-                        title: newJobDescriptionTitle,
-                        label: newJobDescriptionLabel
-                      })}
                       <div>
                         <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
                           Title (optional)
@@ -2138,11 +2121,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                         </label>
                         <textarea
                           value={newJobDescriptionContent}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            console.log('Job description content changed:', value.length, 'characters')
-                            setNewJobDescriptionContent(value)
-                          }}
+                          onChange={(e) => setNewJobDescriptionContent(e.target.value)}
                           placeholder="Paste or type the job description here..."
                           rows={8}
                           style={{
@@ -2187,12 +2166,6 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                         <button
                           type="button"
                           onClick={(e) => {
-                            console.log('Save Job Description button clicked', {
-                              contentLength: newJobDescriptionContent.length,
-                              hasContent: !!newJobDescriptionContent.trim(),
-                              isDisabled: !newJobDescriptionContent.trim() || isSavingJobDescription,
-                              isSaving: isSavingJobDescription
-                            })
                             e.preventDefault()
                             e.stopPropagation()
                             handleSaveNewJobDescription(e)

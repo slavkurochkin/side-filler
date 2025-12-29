@@ -6,15 +6,9 @@ const router = Router();
 // Get all job descriptions (available for all resumes)
 router.get('/', async (req: Request, res: Response) => {
   try {
-    console.log('GET /job-descriptions - Fetching all job descriptions');
     const result = await pool.query(
       'SELECT * FROM job_descriptions ORDER BY updated_at DESC'
     );
-    
-    console.log(`Found ${result.rows.length} job descriptions`);
-    if (result.rows.length > 0) {
-      console.log('Sample job description IDs:', result.rows.slice(0, 3).map(r => r.id));
-    }
     
     res.json(result.rows);
   } catch (error) {
@@ -52,15 +46,6 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { content, title, job_posting_url, label } = req.body;
     
-    console.log('POST /job-descriptions - Request received');
-    console.log('Request body:', { 
-      contentLength: content?.length, 
-      title, 
-      job_posting_url, 
-      label,
-      hasContent: !!content 
-    });
-    
     if (!content) {
       console.error('Missing required fields: content is required');
       return res.status(400).json({ error: 'content is required' });
@@ -83,8 +68,6 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
     
-    console.log('Table exists, proceeding with insert...');
-    
     // Create a new job description (no resume_id needed)
     const result = await pool.query(
       `INSERT INTO job_descriptions (content, title, job_posting_url, label)
@@ -99,12 +82,6 @@ router.post('/', async (req: Request, res: Response) => {
     }
     
     const savedJobDescription = result.rows[0];
-    console.log('Successfully saved job description:', {
-      id: savedJobDescription.id,
-      title: savedJobDescription.title,
-      contentLength: savedJobDescription.content?.length,
-      createdAt: savedJobDescription.created_at
-    });
     
     // Verify it was actually saved by querying it back
     const verifyResult = await pool.query(
@@ -117,7 +94,6 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Job description was not saved correctly' });
     }
     
-    console.log('Verified: Job description exists in database');
     res.status(201).json(savedJobDescription);
   } catch (error) {
     console.error('Error saving job description:', error);
