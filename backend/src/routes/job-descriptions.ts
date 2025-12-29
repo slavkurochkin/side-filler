@@ -94,6 +94,15 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Job description was not saved correctly' });
     }
     
+    // Sync to Qdrant in background (non-blocking)
+    import('../services/vectorSync.js').then(({ syncJobDescriptionToQdrant }) => {
+      syncJobDescriptionToQdrant(savedJobDescription.id).catch((error) => {
+        console.error('Failed to sync job description to Qdrant:', error);
+      });
+    }).catch((error) => {
+      console.error('Failed to import vectorSync service:', error);
+    });
+    
     res.status(201).json(savedJobDescription);
   } catch (error) {
     console.error('Error saving job description:', error);
@@ -156,6 +165,15 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Job description not found' });
     }
     
+    // Sync to Qdrant in background (non-blocking)
+    import('../services/vectorSync.js').then(({ syncJobDescriptionToQdrant }) => {
+      syncJobDescriptionToQdrant(id).catch((error) => {
+        console.error('Failed to sync job description to Qdrant:', error);
+      });
+    }).catch((error) => {
+      console.error('Failed to import vectorSync service:', error);
+    });
+    
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating job description:', error);
@@ -176,6 +194,15 @@ router.delete('/:id', async (req: Request, res: Response) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Job description not found' });
     }
+    
+    // Delete from Qdrant in background (non-blocking)
+    import('../services/vectorSync.js').then(({ deleteJobDescriptionVectors }) => {
+      deleteJobDescriptionVectors(id).catch((error) => {
+        console.error('Failed to delete job description vectors from Qdrant:', error);
+      });
+    }).catch((error) => {
+      console.error('Failed to import vectorSync service:', error);
+    });
     
     res.json({ message: 'Job description deleted successfully' });
   } catch (error) {

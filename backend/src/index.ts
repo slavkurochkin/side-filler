@@ -12,6 +12,7 @@ import jobDescriptionRoutes from './routes/job-descriptions.js';
 import settingsRoutes from './routes/settings.js';
 import aiRoutes from './routes/ai.js';
 import applicationsRoutes from './routes/applications.js';
+import insightsRoutes from './routes/insights.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -477,6 +478,19 @@ async function ensureInterviewPreparationSuggestionsTable() {
   await ensureJobDescriptionsTable();
   await ensureApplicationsTrackerTables();
   await ensureInterviewPreparationSuggestionsTable();
+  
+  // Initialize Qdrant collection (non-blocking, don't fail startup if Qdrant is unavailable)
+  (async () => {
+    try {
+      // Wait a bit for Qdrant to be ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { ensureCollection } = await import('./services/qdrant.js');
+      await ensureCollection();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('⚠️ Failed to initialize Qdrant collection (this is OK if Qdrant is not running):', errorMsg);
+    }
+  })();
 })();
 
 // Health check
@@ -500,11 +514,49 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/applications', applicationsRoutes);
 
+// Register insights routes with error handling
+try {
+  app.use('/api/insights', insightsRoutes);
+  console.log('✅ Insights routes registered');
+} catch (error) {
+  console.error('⚠️ Failed to register insights routes (this is OK if dependencies are missing):', error);
+  // Register a minimal route to prevent 404s
+  app.use('/api/insights', (req, res) => {
+    res.status(503).json({
+      error: 'Insights service is not available',
+      message: 'Please ensure all dependencies are installed and rebuild the backend container',
+    });
+  });
+}
+
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong!' });
 });
+
+// Scheduled sync job - runs daily at 2 AM (only if cron is available)
+(async () => {
+  try {
+    const cron = await import('node-cron');
+    cron.default.schedule('0 2 * * *', async () => {
+      console.log('⏰ Running scheduled sync of job descriptions to Qdrant...');
+      try {
+        const { syncAllJobDescriptionsToQdrant } = await import('./services/vectorSync.js');
+        const result = await syncAllJobDescriptionsToQdrant();
+        console.log(`✅ Scheduled sync complete: ${result.synced} synced, ${result.failed} failed`);
+      } catch (error) {
+        console.error('❌ Scheduled sync failed:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: 'UTC',
+    });
+    console.log('⏰ Scheduled sync job configured (daily at 2 AM UTC)');
+  } catch (error) {
+    console.error('⚠️ Failed to configure scheduled sync job (node-cron not available):', error instanceof Error ? error.message : 'Unknown error');
+  }
+})();
 
 // Start server
 app.listen(PORT, () => {
