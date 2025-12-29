@@ -501,7 +501,8 @@ ${jobDescription}
 2. **Key Questions to Ask**: Relevant questions the candidate should ask during the interview (tailored to the interview type if specified)
 3. **Questions to Expect**: Common questions the interviewer might ask at this stage
 4. **Talking Points**: Key points from the resume and job description to emphasize
-5. **Additional Tips**: Stage-specific advice and best practices
+5. **Company Research & Problem-Solving**: Research suggestions for identifying the company's current challenges, pain points, or areas for improvement (based on the job description, company size, industry trends, etc.), and specific ways the candidate can address these problems using their skills and experience from their resume. This should demonstrate strategic thinking and show how the candidate can add value beyond just meeting the job requirements.
+6. **Additional Tips**: Stage-specific advice and best practices
 
 Format your response in a clear, structured way with sections. Be specific and actionable.`;
 
