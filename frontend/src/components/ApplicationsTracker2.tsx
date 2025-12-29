@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Briefcase, Plus, Edit3, Trash2, Filter, X, Calendar, MapPin, 
   DollarSign, ExternalLink, CheckCircle2, Clock, FileText, 
-  TrendingUp, ChevronDown, Save, AlertCircle, History, User, MessageSquare
+  TrendingUp, ChevronDown, Save, AlertCircle, History, User, MessageSquare, Sparkles
 } from 'lucide-react'
 import { JobSearchCycle, Application, ApplicationStats, ApplicationEvent } from '../types'
+import { InterviewPreparation } from './InterviewPreparation'
 
 // Module loaded successfully
 
@@ -182,6 +183,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     notes: '',
     result: null as 'pass' | 'fail' | null
   })
+  const [showInterviewPrep, setShowInterviewPrep] = useState<Set<string>>(new Set())
   const editInputRef = useRef<HTMLInputElement | null>(null)
   const initialEditValueRef = useRef<string>('')
   const statusSelectRef = useRef<HTMLSelectElement | null>(null)
@@ -1700,6 +1702,33 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                       )}
                     </div>
 
+                    {/* Interview Preparation Section */}
+                    <div className="interview-prep-section">
+                      <button
+                        className="interview-prep-toggle"
+                        onClick={() => {
+                          const newSet = new Set(showInterviewPrep)
+                          if (newSet.has(app.id)) {
+                            newSet.delete(app.id)
+                          } else {
+                            newSet.add(app.id)
+                          }
+                          setShowInterviewPrep(newSet)
+                        }}
+                      >
+                        <Sparkles size={14} />
+                        <span>Interview Preparation</span>
+                        <ChevronDown 
+                          size={14} 
+                          className={showInterviewPrep.has(app.id) ? 'open' : ''} 
+                        />
+                      </button>
+                      
+                      {showInterviewPrep.has(app.id) && (
+                        <InterviewPreparation application={app} />
+                      )}
+                    </div>
+
                     {(app.job_posting_url || app.job_description_title || app.resume_name || app.notes) && (
                       <div className="application-footer">
                         {app.job_posting_url && (
@@ -3030,6 +3059,43 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
         }
 
         .timeline-toggle svg:last-child.open {
+          transform: rotate(180deg);
+        }
+
+        .interview-prep-section {
+          margin-top: var(--space-sm);
+          border-top: 1px solid var(--border-subtle);
+          padding-top: var(--space-sm);
+        }
+
+        .interview-prep-toggle {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+          width: 100%;
+          padding: var(--space-xs) var(--space-sm);
+          background: transparent;
+          border: none;
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          text-align: left;
+        }
+
+        .interview-prep-toggle:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+
+        .interview-prep-toggle svg:last-child {
+          margin-left: auto;
+          transition: transform var(--transition-fast);
+        }
+
+        .interview-prep-toggle svg:last-child.open {
           transform: rotate(180deg);
         }
 

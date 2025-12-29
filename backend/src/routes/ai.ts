@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getLangchainClient } from '../services/langchain.js';
+import { pool } from '../db.js';
 
 const router = Router();
 
@@ -24,6 +25,11 @@ interface AdjustSkillsRequest {
   jobDescription: string;
   currentSkills: string[];
   additionalInstructions?: string;
+}
+
+interface InterviewPreparationRequest {
+  applicationId: string;
+  customPrompt?: string;
 }
 
 /**
@@ -306,6 +312,260 @@ ATS-Optimized Skills List:`;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       error: 'Failed to generate AI suggestions',
+      details: errorMessage
+    });
+  }
+});
+
+/**
+ * Generate interview preparation suggestions based on application stage
+ * POST /api/ai/interview-preparation
+ */
+router.post('/interview-preparation', async (req: Request, res: Response) => {
+  try {
+    const { applicationId, customPrompt }: InterviewPreparationRequest = req.body;
+
+    // Validate required fields
+    if (!applicationId) {
+      return res.status(400).json({ 
+        error: 'applicationId is required' 
+      });
+    }
+
+    // Get Langchain client
+    const client = await getLangchainClient();
+    if (!client) {
+      return res.status(503).json({ 
+        error: 'AI service not available. Please configure OpenAI API key in settings.' 
+      });
+    }
+
+    // Fetch application with job description and resume
+    const appResult = await pool.query(
+      `SELECT 
+        a.*,
+        jd.content as job_description_content,
+        jd.title as job_description_title,
+        r.id as resume_id,
+        r.name as resume_name,
+        r.title as resume_title,
+        r.summary as resume_summary
+      FROM applications a
+      LEFT JOIN job_descriptions jd ON a.job_description_id = jd.id
+      LEFT JOIN resumes r ON a.resume_id = r.id
+      WHERE a.id = $1`,
+      [applicationId]
+    );
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const application = appResult.rows[0];
+
+    // Fetch timeline events to determine current stage
+    const eventsResult = await pool.query(
+      `SELECT * FROM application_events 
+       WHERE application_id = $1 
+       ORDER BY event_date ASC, sort_order ASC, created_at ASC`,
+      [applicationId]
+    );
+
+    const events = eventsResult.rows;
+    
+    // Determine current stage from the last event
+    let currentStage = 'applied';
+    let interviewType: string | null = null;
+    
+    if (events.length > 0) {
+      const lastEvent = events[events.length - 1];
+      currentStage = lastEvent.event_type || 'applied';
+      interviewType = lastEvent.interview_type || null;
+    }
+
+    // Get job description
+    const jobDescription = application.job_description_content || '';
+    if (!jobDescription) {
+      return res.status(400).json({ 
+        error: 'Job description is required for interview preparation. Please attach a job description to this application.' 
+      });
+    }
+
+    // Get resume content if available
+    let resumeContent = '';
+    if (application.resume_id) {
+      // Fetch full resume with sections, entries, and bullets
+      // Use a simpler approach: fetch resume first, then sections separately
+      const resumeResult = await pool.query(
+        `SELECT * FROM resumes WHERE id = $1`,
+        [application.resume_id]
+      );
+
+      if (resumeResult.rows.length > 0) {
+        const resume = resumeResult.rows[0];
+        
+        // Fetch sections with entries and bullets
+        const sectionsResult = await pool.query(
+          `SELECT s.*, 
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'title', e.title,
+                  'subtitle', e.subtitle,
+                  'location', e.location,
+                  'start_date', e.start_date,
+                  'end_date', e.end_date,
+                  'is_current', e.is_current,
+                  'description', e.description,
+                  'bullets', (
+                    SELECT COALESCE(json_agg(b.content ORDER BY b.sort_order), '[]'::json)
+                    FROM bullets b WHERE b.entry_id = e.id
+                  )
+                ) ORDER BY e.sort_order
+              ) FILTER (WHERE e.id IS NOT NULL), '[]'::json
+            ) as entries
+          FROM sections s
+          LEFT JOIN entries e ON s.id = e.section_id
+          WHERE s.resume_id = $1
+          GROUP BY s.id
+          ORDER BY s.sort_order`,
+          [application.resume_id]
+        );
+        
+        const sections = sectionsResult.rows;
+        
+        // Format resume content for the prompt
+        let resumeText = `Resume for ${resume.name || 'Candidate'}`;
+        if (resume.title) resumeText += ` - ${resume.title}`;
+        if (resume.summary) resumeText += `\n\nSummary:\n${resume.summary}`;
+        
+        resumeText += '\n\nExperience and Qualifications:';
+        sections.forEach((section: any) => {
+          if (section.section_type === 'experience' && section.entries) {
+            section.entries.forEach((entry: any) => {
+              resumeText += `\n\n${entry.title}`;
+              if (entry.subtitle) resumeText += ` at ${entry.subtitle}`;
+              if (entry.location) resumeText += ` (${entry.location})`;
+              if (entry.start_date) {
+                resumeText += `\n${entry.start_date} - ${entry.end_date || 'Present'}`;
+              }
+              if (entry.bullets && entry.bullets.length > 0) {
+                entry.bullets.forEach((bullet: string) => {
+                  resumeText += `\n• ${bullet}`;
+                });
+              }
+            });
+          }
+        });
+        
+        resumeContent = resumeText;
+      }
+    }
+
+    // Map stage to human-readable description
+    const stageDescriptions: Record<string, string> = {
+      'interested': 'interested in the position',
+      'applied': 'applied for the position',
+      'recruiter_contacted': 'contacted by a recruiter',
+      'interview': 'in the interview stage',
+      'follow_up': 'following up after an interview',
+      'offer': 'received an offer',
+      'rejected': 'rejected',
+      'withdrawn': 'withdrawn',
+      'accepted': 'accepted an offer',
+      'other': 'at another stage'
+    };
+
+    const stageDescription = stageDescriptions[currentStage] || currentStage;
+    const interviewTypeLabel = interviewType ? ` (${interviewType} interview)` : '';
+
+    // Build the prompt
+    let prompt = `You are an expert career coach and interview preparation specialist. Help a candidate prepare for their job application process.
+
+Current Situation:
+- Company: ${application.company_name}
+- Position: ${application.job_title}
+- Current Stage: The candidate is ${stageDescription}${interviewTypeLabel}
+
+Job Description:
+${jobDescription}
+`;
+
+    if (resumeContent) {
+      prompt += `\n\nCandidate's Resume:\n${resumeContent}\n`;
+    }
+
+    prompt += `\n\nBased on the current stage (${stageDescription}${interviewTypeLabel}), provide comprehensive interview preparation guidance. Include:
+
+1. **What to Prepare For**: Specific topics, skills, or areas to focus on based on the job description and current stage
+2. **Key Questions to Ask**: Relevant questions the candidate should ask during the interview (tailored to the interview type if specified)
+3. **Questions to Expect**: Common questions the interviewer might ask at this stage
+4. **Talking Points**: Key points from the resume and job description to emphasize
+5. **Additional Tips**: Stage-specific advice and best practices
+
+Format your response in a clear, structured way with sections. Be specific and actionable.`;
+
+    if (customPrompt) {
+      prompt += `\n\nAdditional Context/Request from Candidate:\n${customPrompt}`;
+    }
+
+    // Call OpenAI
+    const response = await client.invoke(prompt);
+    const suggestionText = response.content?.toString() || String(response);
+
+    // Store the suggestion in the database
+    const insertResult = await pool.query(
+      `INSERT INTO interview_preparation_suggestions 
+       (application_id, current_stage, interview_type, suggestion_text)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [applicationId, currentStage, interviewType, suggestionText]
+    );
+
+    res.json({
+      suggestion: insertResult.rows[0],
+      currentStage,
+      interviewType
+    });
+
+  } catch (error) {
+    console.error('Error generating interview preparation suggestions:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({ 
+      error: 'Failed to generate interview preparation suggestions',
+      details: errorMessage
+    });
+  }
+});
+
+/**
+ * Get interview preparation suggestions for an application
+ * GET /api/ai/interview-preparation/:applicationId
+ */
+router.get('/interview-preparation/:applicationId', async (req: Request, res: Response) => {
+  try {
+    const { applicationId } = req.params;
+
+    const result = await pool.query(
+      `SELECT * FROM interview_preparation_suggestions 
+       WHERE application_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [applicationId]
+    );
+
+    if (result.rows.length === 0) {
+      // Return 200 with null instead of 404 to avoid console errors
+      // 404 is expected when no suggestion exists yet
+      return res.status(200).json(null);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching interview preparation suggestions:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.status(500).json({ 
+      error: 'Failed to fetch interview preparation suggestions',
       details: errorMessage
     });
   }

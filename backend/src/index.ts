@@ -374,12 +374,88 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json());
 
+// Auto-migration: Check and create interview_preparation_suggestions table if it doesn't exist
+async function ensureInterviewPreparationSuggestionsTable() {
+  try {
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'interview_preparation_suggestions'
+      )
+    `);
+    
+    if (!tableExists.rows[0].exists) {
+      console.log('💡 Creating interview_preparation_suggestions table...');
+      
+      // Enable UUID extension
+      await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+      
+      // Create table
+      await pool.query(`
+        CREATE TABLE interview_preparation_suggestions (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+          current_stage VARCHAR(100) NOT NULL,
+          interview_type VARCHAR(50),
+          suggestion_text TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      // Create indexes
+      await pool.query(`
+        CREATE INDEX idx_interview_prep_suggestions_application_id 
+        ON interview_preparation_suggestions(application_id)
+      `);
+      
+      await pool.query(`
+        CREATE INDEX idx_interview_prep_suggestions_created_at 
+        ON interview_preparation_suggestions(created_at)
+      `);
+      
+      // Create trigger function if it doesn't exist
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+        END;
+        $$ language 'plpgsql'
+      `);
+      
+      // Create trigger
+      await pool.query(`
+        DROP TRIGGER IF EXISTS update_interview_prep_suggestions_updated_at 
+        ON interview_preparation_suggestions
+      `);
+      
+      await pool.query(`
+        CREATE TRIGGER update_interview_prep_suggestions_updated_at 
+        BEFORE UPDATE ON interview_preparation_suggestions 
+        FOR EACH ROW 
+        EXECUTE FUNCTION update_updated_at_column()
+      `);
+      
+      console.log('✅ interview_preparation_suggestions table created successfully');
+    } else {
+      console.log('✅ interview_preparation_suggestions table already exists');
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring interview_preparation_suggestions table:', error);
+    // Don't throw - allow server to start even if migration fails
+  }
+}
+
 // Run migrations on startup (await them to ensure they complete)
 (async () => {
   await ensureSettingsTable();
   await ensureResumeTitleColumn();
   await ensureJobDescriptionsTable();
   await ensureApplicationsTrackerTables();
+  await ensureInterviewPreparationSuggestionsTable();
 })();
 
 // Health check
