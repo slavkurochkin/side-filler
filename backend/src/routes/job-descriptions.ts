@@ -6,13 +6,22 @@ const router = Router();
 // Get all job descriptions (available for all resumes)
 router.get('/', async (req: Request, res: Response) => {
   try {
+    console.log('GET /job-descriptions - Fetching all job descriptions');
     const result = await pool.query(
       'SELECT * FROM job_descriptions ORDER BY updated_at DESC'
     );
     
+    console.log(`Found ${result.rows.length} job descriptions`);
+    if (result.rows.length > 0) {
+      console.log('Sample job description IDs:', result.rows.slice(0, 3).map(r => r.id));
+    }
+    
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching job descriptions:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', error.message);
+    }
     res.status(500).json({ error: 'Failed to fetch job descriptions' });
   }
 });
@@ -43,12 +52,38 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { content, title, job_posting_url, label } = req.body;
     
-    console.log('POST /job-descriptions - Request body:', { contentLength: content?.length, title, job_posting_url, label });
+    console.log('POST /job-descriptions - Request received');
+    console.log('Request body:', { 
+      contentLength: content?.length, 
+      title, 
+      job_posting_url, 
+      label,
+      hasContent: !!content 
+    });
     
     if (!content) {
-      console.error('Missing required fields:', { content: !!content });
+      console.error('Missing required fields: content is required');
       return res.status(400).json({ error: 'content is required' });
     }
+    
+    // Verify table exists
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'job_descriptions'
+      )
+    `);
+    
+    if (!tableCheck.rows[0].exists) {
+      console.error('ERROR: job_descriptions table does not exist!');
+      return res.status(500).json({ 
+        error: 'Database table not found. Please run database migrations.', 
+        details: 'job_descriptions table does not exist' 
+      });
+    }
+    
+    console.log('Table exists, proceeding with insert...');
     
     // Create a new job description (no resume_id needed)
     const result = await pool.query(
@@ -58,8 +93,32 @@ router.post('/', async (req: Request, res: Response) => {
       [content, title || null, job_posting_url || null, label || null]
     );
     
-    console.log('Successfully saved job description:', result.rows[0].id);
-    res.status(201).json(result.rows[0]);
+    if (!result.rows || result.rows.length === 0) {
+      console.error('ERROR: Insert query returned no rows');
+      return res.status(500).json({ error: 'Failed to save job description - no data returned' });
+    }
+    
+    const savedJobDescription = result.rows[0];
+    console.log('Successfully saved job description:', {
+      id: savedJobDescription.id,
+      title: savedJobDescription.title,
+      contentLength: savedJobDescription.content?.length,
+      createdAt: savedJobDescription.created_at
+    });
+    
+    // Verify it was actually saved by querying it back
+    const verifyResult = await pool.query(
+      'SELECT * FROM job_descriptions WHERE id = $1',
+      [savedJobDescription.id]
+    );
+    
+    if (verifyResult.rows.length === 0) {
+      console.error('ERROR: Job description was not found after insert!');
+      return res.status(500).json({ error: 'Job description was not saved correctly' });
+    }
+    
+    console.log('Verified: Job description exists in database');
+    res.status(201).json(savedJobDescription);
   } catch (error) {
     console.error('Error saving job description:', error);
     if (error instanceof Error) {

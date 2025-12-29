@@ -269,6 +269,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
           title: jd.title || `Job Description ${new Date(jd.created_at).toLocaleDateString()}`,
           label: jd.label || null
         })))
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch job descriptions' }))
+        console.error('Failed to fetch job descriptions - response not ok:', response.status, errorData)
       }
     } catch (error) {
       console.error('Failed to fetch job descriptions:', error)
@@ -287,7 +290,13 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     }
   }
 
-  const handleSaveNewJobDescription = async () => {
+  const handleSaveNewJobDescription = async (e?: React.MouseEvent) => {
+    // Prevent any form submission if called from a button
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
     if (!newJobDescriptionContent.trim()) {
       alert('Job description content is required')
       return
@@ -296,35 +305,81 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
     try {
       setIsSavingJobDescription(true)
       const url = applicationForm.job_posting_url || ''
+      const requestBody = {
+        content: newJobDescriptionContent,
+        title: newJobDescriptionTitle.trim() || null,
+        job_posting_url: url.trim() || null,
+        label: newJobDescriptionLabel.trim() || null
+      }
+      
       const response = await fetch(`${API_URL}/job-descriptions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: newJobDescriptionContent,
-          title: newJobDescriptionTitle.trim() || null,
-          job_posting_url: url.trim() || null,
-          label: newJobDescriptionLabel.trim() || null
-        })
+        body: JSON.stringify(requestBody)
       })
+
+      console.log('Response status:', response.status, response.statusText)
+      console.log('Response ok:', response.ok)
 
       if (response.ok) {
         const data = await response.json()
-        // Refresh job descriptions list
-        await fetchJobDescriptions()
+        console.log('Job description saved successfully - response data:', data)
+        
+        if (!data || !data.id) {
+          console.error('ERROR: Response data is missing or invalid:', data)
+          alert('Failed to save job description: Invalid response from server')
+          return
+        }
+        
+        // Add the newly created job description to the list immediately
+        const newJobDescription = {
+          id: data.id,
+          title: data.title || (data.created_at 
+            ? `Job Description ${new Date(data.created_at).toLocaleDateString()}` 
+            : 'New Job Description'),
+          label: data.label || null
+        }
+        console.log('Adding to state:', newJobDescription)
+        setJobDescriptions(prev => {
+          const updated = [newJobDescription, ...prev]
+          console.log('Updated job descriptions list, count:', updated.length)
+          return updated
+        })
+        
+        // Also refresh from server to ensure consistency (with a small delay to ensure DB commit)
+        setTimeout(async () => {
+          console.log('Refreshing job descriptions from server...')
+          await fetchJobDescriptions()
+        }, 100)
+        
         // Select the newly created job description
         setApplicationForm({ ...applicationForm, job_description_id: data.id })
+        
         // Reset new job description state
         setIsCreatingNewJobDescription(false)
         setNewJobDescriptionContent('')
         setNewJobDescriptionTitle('')
         setNewJobDescriptionLabel('')
       } else {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to save job description' }))
-        alert(`Failed to save job description: ${errorData.error || 'Unknown error'}`)
+        const errorText = await response.text()
+        console.error('Failed to save job description - response not ok:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        })
+        
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText || 'Failed to save job description' }
+        }
+        
+        alert(`Failed to save job description: ${errorData.error || errorData.details || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Failed to save job description:', error)
-      alert('Failed to save job description')
+      alert(`Failed to save job description: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsSavingJobDescription(false)
     }
@@ -2030,6 +2085,13 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                   </div>
                   {isCreatingNewJobDescription && (
                     <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {console.log('Rendering job description form', {
+                        hasContent: !!newJobDescriptionContent.trim(),
+                        contentLength: newJobDescriptionContent.length,
+                        isSaving: isSavingJobDescription,
+                        title: newJobDescriptionTitle,
+                        label: newJobDescriptionLabel
+                      })}
                       <div>
                         <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
                           Title (optional)
@@ -2076,7 +2138,11 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                         </label>
                         <textarea
                           value={newJobDescriptionContent}
-                          onChange={(e) => setNewJobDescriptionContent(e.target.value)}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            console.log('Job description content changed:', value.length, 'characters')
+                            setNewJobDescriptionContent(value)
+                          }}
                           placeholder="Paste or type the job description here..."
                           rows={8}
                           style={{
@@ -2094,6 +2160,7 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                       </div>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         <button
+                          type="button"
                           onClick={handleCancelNewJobDescription}
                           style={{
                             padding: '6px 12px',
@@ -2118,7 +2185,18 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                           Cancel
                         </button>
                         <button
-                          onClick={handleSaveNewJobDescription}
+                          type="button"
+                          onClick={(e) => {
+                            console.log('Save Job Description button clicked', {
+                              contentLength: newJobDescriptionContent.length,
+                              hasContent: !!newJobDescriptionContent.trim(),
+                              isDisabled: !newJobDescriptionContent.trim() || isSavingJobDescription,
+                              isSaving: isSavingJobDescription
+                            })
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleSaveNewJobDescription(e)
+                          }}
                           disabled={!newJobDescriptionContent.trim() || isSavingJobDescription}
                           style={{
                             padding: '6px 12px',
@@ -2130,7 +2208,9 @@ export function ApplicationsTracker({ onControlsReady }: ApplicationsTrackerProp
                             fontWeight: 500,
                             cursor: isSavingJobDescription || !newJobDescriptionContent.trim() ? 'not-allowed' : 'pointer',
                             opacity: isSavingJobDescription || !newJobDescriptionContent.trim() ? 0.5 : 1,
-                            transition: 'all var(--transition-fast)'
+                            transition: 'all var(--transition-fast)',
+                            position: 'relative',
+                            zIndex: 10
                           }}
                           onMouseEnter={(e) => {
                             if (!isSavingJobDescription && newJobDescriptionContent.trim()) {
