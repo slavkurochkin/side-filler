@@ -8,6 +8,18 @@ Contributions, forks, and feedback are always welcome! 🚀
 
 ![SideFiller](https://img.shields.io/badge/React-18-blue) ![Express](https://img.shields.io/badge/Express-4-green) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue) ![Docker](https://img.shields.io/badge/Docker-Ready-blue) ![AI](https://img.shields.io/badge/AI-Powered-purple)
 
+## 📹 Video Walkthrough
+
+Watch a complete walkthrough of SideFiller's main features:
+
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=ZYt7vhjzPhs">
+    <img src="docs/video-thumbnail.png" alt="SideFiller Walkthrough" style="width:100%;max-width:800px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=ZYt7vhjzPhs">▶️ Watch on YouTube</a>
+</div>
+
 ## Features
 
 ### Core Functionality
